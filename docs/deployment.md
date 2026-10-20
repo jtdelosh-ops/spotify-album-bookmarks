@@ -1,19 +1,16 @@
 # Deployment and operations checklist
 
-## Current deployed instance — 20 October 2026
+## Choose your deployment
 
-James approved creation/publication on Workers Free without a paid upgrade and confirmed the Free plan. The billing API was not accessible, so plan status is user-confirmed. No subscription or billing setting was changed.
+This guide creates your own instance. The repository's `wrangler.production.jsonc` identifies the original maintainer's deployment. For a new installation, copy `wrangler.production.example.jsonc` over that file in your own checkout, then replace every account, hostname, Client ID, and database placeholder. Existing operators should keep their working production file and skip resource creation.
 
-- URL: `https://spotify-album-bookmarks.jtdelosh.workers.dev`
-- Configuration: `wrangler.production.jsonc`
-- D1 database: `203197d1-c7f1-4cdc-a5e4-92cc800f18e6`, binding `DB`
-- Active Worker version: `995f361b-94f9-44fa-901d-dedaa454bccc`, 100% of traffic
-- Schema applied; one owner binding and one saved bookmark copied. PC Spotify credentials, sessions, OAuth transactions and Shortcut credentials were not copied.
-- Separate production keys were uploaded with `--secrets-file .env.production`; key values were not printed or committed.
-- Live checks passed for assets, security headers, unauthenticated access denial, Shortcut error envelopes, cross-origin rejection, Secure OAuth cookies, and one-use state. Metadata confirms the intended D1 binding, daily cleanup schedule, disabled preview URLs, and disabled automatic observability.
-- Production Spotify sign-in, live resume accuracy, and physical iPhone execution are pending. Follow [your iPhone setup](iphone-setup.md).
+```sh
+cp wrangler.production.example.jsonc wrangler.production.jsonc
+```
 
-The checklist below describes the general workflow. New resource creation, secret changes or public deployments must remain within the user's authorization. Local `--dry-run` and `--local` commands do not publish a service.
+PowerShell equivalent: `Copy-Item wrangler.production.example.jsonc wrangler.production.jsonc`.
+
+Check your Cloudflare plan and usage before creating resources. A small personal installation may fit available allowances; this project makes no zero-cost guarantee. Remote migration and deploy commands change real resources. Local `--dry-run` and `--local` commands do not publish.
 
 ## Prepare a reviewable configuration
 
@@ -21,28 +18,41 @@ The checklist below describes the general workflow. New resource creation, secre
 - [ ] Confirm the intended Spotify Client ID and user allowlist; avoid changing an unrelated app. Register `https://YOUR_HOST/auth/spotify/callback` exactly.
 - [ ] In `wrangler.production.jsonc`, verify the intended account, final `APP_ORIGIN` without a trailing slash, and `SPOTIFY_CLIENT_ID`. The Client ID is public. Changing the hostname requires updating Spotify's redirect URI and signing in again. The PC config is separate.
 - [ ] Generate separate production `ENCRYPTION_KEY` and `SETUP_KEY` as in README. Keep recoverable copies in a password manager. Do not reuse local keys.
-- [ ] Run `npm ci`, `npm run typecheck`, `npm test`, and `npm run build`. Check the source review and remaining live validation limits.
+- [ ] Run `npm ci`, `npm run typecheck`, and `npm run build`. Use `npm test` when checking application behavior, and complete relevant manual device checks before relying on a new installation.
 - [ ] Approve resource creation and deployment against these names and this configuration.
 
 ## Commands after approval
 
-These describe initial creation, which has already completed for the current instance. Routine updates use `npm run deploy`; do not create another database or reimport the initial bookmark SQL for an ordinary update.
+These commands describe a new installation. Fill in your Cloudflare account ID, intended HTTPS `APP_ORIGIN`, and Spotify Client ID before running them. Register `https://YOUR_HOST/auth/spotify/callback` in Spotify, replacing the host with the exact origin you configured. Use a hostname assigned to your Cloudflare account. Routine updates skip database creation; do not import someone else's database or initial bookmark data.
 
 ```sh
 npx wrangler login
 npx wrangler d1 create spotify-album-bookmarks --config wrangler.production.jsonc
 ```
 
-Copy the returned UUID into `d1_databases[0].database_id` in `wrangler.production.jsonc`; verify the Cloudflare account before continuing. Then:
+Copy the returned UUID into `d1_databases[0].database_id` in `wrangler.production.jsonc`; verify the Cloudflare account before continuing. Create the ignored `.env.production` file with two separately generated values, using the commands in the [README](../README.md#2-configure-spotify-and-your-keys):
+
+```dotenv
+ENCRYPTION_KEY="YOUR_NEW_STANDARD_BASE64_KEY"
+SETUP_KEY="YOUR_NEW_PRIVATE_SETUP_KEY"
+```
+
+Do not copy local keys into production. Keep recoverable copies in a password manager. Key values do not belong in Git or command-line arguments. Remote migration can change a real database: review the account, target, and migration list before confirming.
+
+Then apply the schema and deploy:
 
 ```sh
 npx wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc
 npm run deploy -- --secrets-file .env.production
 ```
 
-Keep secrets in the ignored `.env.production` file. Do not place values on command lines, in chat, or in configuration committed to Git. Wrangler's remote migration can change a real database: review the account, target, and migration list before confirming.
+After publishing, open your HTTPS page, enter the production setup key, and approve Spotify access. The first account becomes the owner. For the iPhone, follow the [setup checklist](iphone-setup.md).
 
-For the current instance, the actual publication used `npx wrangler deploy --config wrangler.production.jsonc --secrets-file .env.production`, which uploads the secrets with the Worker version. The `npm run deploy` script now selects that production config. Preserve the production keys unless deliberately performing the recovery/rotation procedure.
+## Update an existing instance
+
+Pull the intended changes, install locked dependencies with `npm ci`, review any new migrations, and verify your production configuration still names the correct account, origin, Client ID, and D1 UUID. Use `npm run deploy` for code/assets updates; it selects `wrangler.production.jsonc` and preserves existing deployed secrets. Use `-- --secrets-file .env.production` only when intentionally uploading keys. Do not recreate the database, reimport initial data, or generate replacement encryption keys for routine updates.
+
+An update to Worker code does not automatically apply D1 migrations. For schema changes, back up first, review compatibility, and explicitly apply the intended migrations with the production config.
 
 For a custom domain, configure that exact domain in Cloudflare, verify it routes to this Worker, and set `APP_ORIGIN` to it before testing OAuth. The default workers.dev address must exactly match its configured origin if used.
 

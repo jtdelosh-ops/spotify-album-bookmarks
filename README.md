@@ -1,95 +1,187 @@
 # Spotify Album Bookmarks
 
-A personal Cloudflare Worker that saves the music album, track, and position currently playing in Spotify. Save from an iPhone Shortcut without opening a companion app; resume from a small mobile page.
+**Save your place in an album. Come back to the same track and moment.**
 
-**Status:** deployed at [your bookmark page](https://spotify-album-bookmarks.jtdelosh.workers.dev). Production security/routing/database checks pass. Local Spotify sign-in completed and James reported that saving a bookmark works; that bookmark was copied to production. Production Spotify sign-in, live resume accuracy, and physical iPhone Shortcut execution remain to be checked. Start with [your iPhone setup](docs/iphone-setup.md).
+A small, self-hosted app for listening to long albums, DJ mixes, and multi-disc releases across several sessions. While music is playing, tap **Bookmark now** on the web page or run an iPhone Shortcut. Later, open your shelf and tap **Resume**.
+
+For example: save track 15 at **1:10**, listen to something else, then return to that album at **1:10 in track 15**. Each album gets one bookmark; saving it again replaces its previous position.
+
+This is a personal app for **one Spotify account per deployment**. You host your own copy and connect your own Spotify developer app. It is independent of Spotify.
+
+## What you get
+
+- A mobile-friendly shelf with album artwork, track names, saved times, and Resume/Delete buttons.
+- An iPhone Shortcut to save current playback from the Home Screen or a widget.
+- Resume on your active Spotify player, or choose a computer, phone, or speaker under **Where to play**.
+- Album-context playback: resume supplies the album, saved track, and saved time together.
+- Private bookmarks stored in your own Cloudflare Worker and D1 database.
+
+**Saving is manual.** The app does not continuously track your listening or pause Spotify when you bookmark. It does not download or stream audio; playback stays in Spotify.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Web page or iPhone Shortcut] -->|Save| B[Cloudflare Worker]
+    B -->|Read current track and position| C[Spotify Web API]
+    B -->|Store one bookmark per album| D[(Cloudflare D1)]
+    E[Web page: Resume] -->|Read saved bookmark| B
+    B -->|Play album, track and saved position| C
+    C --> F[Your Spotify device]
+```
+
+On save, the Worker asks Spotify what is playing and stores the album ID, track ID, playback position, and display metadata. On resume, it sends the album URI, the track URI as an offset, and the saved time in one request. Using the track URI supports multi-disc albums without assuming track numbers are unique across the release.
+
+Spotify sign-in uses PKCE and requests `user-read-playback-state` and `user-modify-playback-state`. No Spotify client secret is needed.
 
 ## Requirements
 
-- Node.js 24 or later and npm. Development packages are pinned in `package-lock.json`; production has no npm runtime dependencies.
-- Spotify Premium and a developer app in development mode, with your Spotify account allowlisted. This project is for personal, noncommercial use.
-- A Cloudflare account for eventual hosting. Creating resources or deploying is a separate action requiring your approval.
+- **Spotify Premium**, required by Spotify's [playback-control endpoint](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback).
+- Your own [Spotify developer app](https://developer.spotify.com/dashboard) with Web API access and your account permitted to use it. App eligibility and development limits follow Spotify's [current quota-mode rules](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+- **Node.js 24 or later**, npm, and Git for local development.
+- A **Cloudflare account** with Workers and D1 access for hosting. Check your plan's limits and usage; this project does not guarantee free hosting.
+- An iPhone with Apple's Shortcuts app for one-tap saving. The web page can save without a Shortcut.
 
-## Local setup
+## Run locally
 
-1. Run `npm ci`, then `npm run typecheck` and `npm test`.
-2. Copy `.env.example` to `.dev.vars`. Wrangler reads `.dev.vars`; the template name `.env.example` is for documentation.
-3. Set `SPOTIFY_CLIENT_ID` to your app's public Client ID. No Spotify client secret is used.
-4. Generate two **separate** keys and put each value in the indicated variable. Do not commit them:
-
-   ```sh
-   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
-   # ENCRYPTION_KEY: AES-256 key, standard base64
-   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
-   # SETUP_KEY: private sign-in/bootstrap key, at least 32 characters
-   ```
-
-5. Keep `APP_ORIGIN="http://127.0.0.1:8787"` for local use. Add **exactly** `http://127.0.0.1:8787/auth/spotify/callback` to your Spotify app's redirect URIs. `localhost` is not accepted by Spotify.
-6. Run `npm run db:local`, then `npm run dev`. The placeholder database UUID is sufficient for a local D1 database.
-7. Open `http://127.0.0.1:8787`, enter your setup key, and authorize Spotify. The first successful account becomes the permanent owner of this instance. Later sign-ins require the same Spotify account and the setup key. Reauthorization ends all previous web sessions.
-
-Local HTTP is allowed only on explicit loopback addresses; production requires HTTPS. An iPhone cannot reach the computer's loopback address. Use a reviewed HTTPS deployment for real Shortcut testing.
-
-## How it behaves
-
-- Save requires `is_playing=true`, a Spotify music track with album metadata, and a valid position. Paused tracks, local files, ads, episodes, audiobooks, and absent playback are rejected without overwriting a bookmark.
-- One row per owner and album; saving again updates that row. Position is the value Spotify reports, so capture is approximate.
-- Resume sends the saved album URI, **track URI offset**, and `position_ms` in one request. This supports disc-two tracks without calculating a track index. No automatic fallback changes playback to an isolated track.
-- Resume targets the current active, unrestricted Spotify device by default. Use **Refresh devices** and **Where to play** to explicitly choose an available device, including an idle one. Playback may move to the selected device. The service does not launch Spotify or promise it can wake a closed iPhone app.
-- Spotify's shuffle/repeat settings are left as they are. Shuffle may affect tracks played after the bookmarked track. Market relinking, catalog removals, or device restrictions can prevent a saved track from resuming.
-- Refresh tokens expire after six months under current Spotify rules. Expiration/revocation prompts reconnection; saved bookmarks remain. Shortcut credentials remain usable after ordinary reauthorization, but are revoked by Disconnect.
-
-## iPhone Shortcut
-
-Follow [the exact setup guide](docs/shortcut-setup.md). Create a credential under **iPhone Shortcut & account** after signing in. The credential can only save current playback. Creating a replacement revokes the old one.
-
-## API
-
-Web mutations require the session cookie, an exact matching `Origin`, and `X-CSRF-Token` from `GET /api/session`. A Shortcut supplies its own Bearer credential only to the save endpoint.
-
-| Method / path | Purpose |
-| --- | --- |
-| `POST /auth/spotify/start` | Same-origin form with private `setup_key`; begin PKCE |
-| `GET /auth/spotify/callback` | One-use, browser-bound Spotify callback |
-| `GET /api/session` | Session state, CSRF token, Spotify connection state |
-| `POST /api/bookmarks/current` | Read Spotify and upsert current album bookmark |
-| `GET /api/bookmarks` | Private bookmark list |
-| `DELETE /api/bookmarks/:albumId` | Delete one bookmark |
-| `GET /api/devices` | List available, unrestricted Spotify devices (web session only) |
-| `POST /api/bookmarks/:albumId/resume` | Request playback on the active device, or send JSON `{ "deviceId": "…" }` for an explicitly chosen available device |
-| `GET /api/shortcut-credentials` | Active credential ID/date; never returns its secret |
-| `POST /api/shortcut-credentials` | Replace credential; display secret once |
-| `DELETE /api/shortcut-credentials` | Revoke all Shortcut credentials |
-| `POST /api/logout` | End this browser session |
-| `POST /api/disconnect` | Remove Spotify tokens, end all sessions, revoke Shortcut access; retain bookmarks |
-
-Errors use `{ok:false,code,message,httpStatus,requestId}` with appropriate HTTP statuses. Save requests with `X-Shortcut-Response: notification` instead return HTTP 200 for application errors, preserving the original status in `httpStatus`, so the Shortcut can display `message`. Authentication and rate limits still apply. Transport failures cannot produce a server notification response.
-
-## Development and verification
+### 1. Get the project
 
 ```sh
-npm run typecheck
-npm test
-npm run build
+git clone https://github.com/jtdelosh-ops/spotify-album-bookmarks.git
+cd spotify-album-bookmarks
+npm ci
+cp .env.example .dev.vars
 ```
 
-Tests execute real application SQL in Node's in-memory SQLite and mock Spotify HTTP. `build` is a Wrangler **dry run**, which bundles the Worker without deploying it. The Node adapter does not prove Cloudflare concurrency or actual Spotify device behavior. Local Wrangler migration and runtime checks complement it; real account/device validation remains required.
+In Windows PowerShell, `Copy-Item .env.example .dev.vars` also works.
 
-## Deployment, operations, and security
+### 2. Configure Spotify and your keys
 
-Use [the deployment checklist](docs/deployment.md), [threat model](docs/security.md), and [manual test plan](docs/manual-test-plan.md). Unknown errors log only a random request ID and fixed event name. Workers automatic observability is disabled to reduce accidental OAuth URL capture; do not enable request tracing or log full request objects, URLs, headers, or bodies.
+Add this exact redirect URI to your Spotify developer app:
 
-The deployed instance uses `wrangler.production.jsonc` and separate ignored `.env.production` secrets. The generic `wrangler.jsonc` remains the PC development configuration. For an authorized production update, `npm run deploy` selects the production config and preserves the deployed secrets. Add `-- --secrets-file .env.production` only when intentionally uploading the production keys, including initial setup or an approved rotation.
+```text
+http://127.0.0.1:8787/auth/spotify/callback
+```
+
+Spotify allows HTTP for explicit loopback IPs but does not accept `localhost` as a redirect URI. See its [redirect URI requirements](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri).
+
+Edit `.dev.vars`:
+
+| Variable | Value |
+| --- | --- |
+| `APP_ORIGIN` | `http://127.0.0.1:8787`, no trailing slash |
+| `SPOTIFY_CLIENT_ID` | Your app's public Client ID |
+| `ENCRYPTION_KEY` | A new 32-byte key in standard base64 |
+| `SETUP_KEY` | A separate random key for signing in to your instance |
+
+Generate the keys separately:
+
+```sh
+# ENCRYPTION_KEY
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+# SETUP_KEY
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Keep both private and recoverable. `.dev.vars` is ignored by Git. Enter the **setup key** on the sign-in page; the **encryption key** stays on the server and is never entered on that page.
+
+### 3. Start the app
+
+```sh
+npm run db:local
+npm run dev
+```
+
+Open [127.0.0.1:8787](http://127.0.0.1:8787), enter your setup key, and authorize Spotify. The first account to complete sign-in becomes the owner. Later sign-ins require that same account and the setup key. Reconnecting ends existing browser sessions and preserves bookmarks.
+
+Play a music track and tap **Bookmark now**. To resume, use the active player or tap **Refresh devices**, select a device under **Where to play**, and tap **Resume**. Choosing another device may move playback there.
+
+Your iPhone cannot use the computer's loopback address. Deploy an HTTPS instance before setting up the real Shortcut.
+
+## Host your own copy
+
+Follow the [deployment guide](docs/deployment.md) for database creation, secrets, and the Spotify HTTPS callback.
+
+Start with **[`wrangler.production.example.jsonc`](wrangler.production.example.jsonc)** and enter your own account, database, hostname, and Client ID. The checked-in `wrangler.production.jsonc` identifies the original deployment; it is not a configuration for someone else's account. `npm run deploy` uses that production file, so configure it before deploying.
+
+The guide also covers updates, backups, and key recovery.
+
+## Set up the iPhone Shortcut
+
+After signing in to your hosted page:
+
+1. Expand **iPhone Shortcut & account**, choose **Create / replace Shortcut credential**, and copy the value shown once.
+2. In Shortcuts, create **Bookmark current album**. Add **Get Contents of URL** for `https://YOUR_HOST/api/bookmarks/current`.
+3. Set method **POST**, an empty JSON body, and these headers:
+
+   | Header | Value |
+   | --- | --- |
+   | `Authorization` | `Bearer YOUR_SHORTCUT_CREDENTIAL` |
+   | `X-Shortcut-Response` | `notification` |
+   | `Content-Type` | `application/json` |
+
+4. Get the response dictionary's **message** value and pass it to **Show Notification**.
+5. Run once while Spotify music is playing, allow the requested permissions, and add the Shortcut to your Home Screen or widget.
+
+The [full Shortcut guide](docs/shortcut-setup.md) covers each action, examples, and revocation. This repository provides a manual recipe, not an importable `.shortcut` file.
+
+The Shortcut credential is separate from the setup key. It can **only save current playback**, not read your shelf or control playback. Replacing it invalidates the old credential; update the Shortcut afterward. Do not share a Shortcut containing your credential.
+
+## Behavior and limitations
+
+- **Music must be playing when you save.** Paused playback, local files, ads, episodes, audiobooks, and missing positions are rejected without overwriting a bookmark.
+- **One position per album.** No bookmark history or automatic progress tracking.
+- **Timing is approximate.** Capture uses Spotify's reported position; network and device delays affect capture and resume.
+- **Devices must be available to Spotify.** Explicit selection can target an available idle device, but cannot guarantee waking a closed app or reaching an offline device.
+- **Shuffle and repeat stay as you set them.** Shuffle can change which track follows the bookmarked one.
+- **Availability can change.** Removed/relinked tracks, regional restrictions, and restricted devices can prevent resume.
+- **Reconnection may be needed.** If Spotify authorization expires or is revoked, reconnect with the original owner. Bookmarks remain.
+- **One owner per instance.** There is no account switching or ownership-transfer interface. Use a separate instance/database for another account.
+
+## Privacy and security
+
+Spotify access and refresh tokens stay on the server, encrypted in D1 with AES-256-GCM. Bookmark metadata and positions are stored in D1; they are not encrypted by the application. Browser sessions use HttpOnly cookies, and mutations require origin and CSRF checks. Shortcut credentials are hashed and revocable.
+
+**Disconnect Spotify** removes stored Spotify credentials, ends browser sessions, and revokes Shortcut access. It retains bookmarks and the owner binding. To revoke Spotify's grant itself, also remove the app in Spotify's account app-access settings.
+
+Never commit `.dev.vars`, `.env.production`, database exports, or populated Shortcut files. The [security guide](docs/security.md) explains retention, recovery, and trust boundaries.
 
 ## Troubleshooting
 
-- **Sign-in denied / 403:** check Premium, your app's user allowlist, private setup key, exact redirect URI, and requested playback permissions. Sign in with the original owner account.
-- **No active device:** tap **Refresh devices**, choose the desired device under **Where to play**, then tap Resume. If it is absent, open Spotify on that device and refresh again.
-- **Paused playback:** press Play before Bookmark now or the Shortcut.
-- **Reconnect Spotify:** sign in again using the same owner. This preserves bookmarks; six-month token expiry is expected.
-- **429:** respect `Retry-After` when present. `spotify_quota` means shared developer quota; its reset time is not inferred. No automatic retry loop is used.
-- **`spotify_busy`:** a refresh is in progress; retry once after a short pause.
-- **Wrong instance origin:** update `APP_ORIGIN`, use that exact address, and keep Spotify's redirect URI aligned. Never include a trailing slash in `APP_ORIGIN`.
-- **Lost encryption key:** existing encrypted tokens cannot be recovered. Follow recovery instructions and reconnect.
+| Symptom | What to do |
+| --- | --- |
+| No active device, even though Spotify is open | **Refresh devices**, choose the intended device under **Where to play**, then Resume. If absent, open Spotify there and refresh. |
+| Nothing saves | Play a supported music track using the account you connected. Paused tracks are not saved. |
+| Sign-in fails | Check the setup key, original owner account, app access, and exact callback. Both playback permissions are required. |
+| Reconnect requested | Authorize the same account again. Your bookmarks remain. |
+| Shortcut stopped after replacing its credential | Update the Authorization header. Include `Bearer` followed by one space and the new credential. |
+| Rate limit or quota error | Respect `Retry-After` if provided. Repeated attempts do not fix quota exhaustion. |
+| `spotify_busy` | Credential refresh is in progress. Try again after a short pause. |
+| Lost encryption key | Follow the [recovery procedure](docs/deployment.md#lost-key-or-token-compromise-recovery), then reconnect. Existing encrypted credentials cannot be recovered without their key. |
 
-No Spotify audio is downloaded, stored, or streamed by this service.
+## Development
+
+TypeScript Worker, plain HTML/CSS/JavaScript, and D1 SQL. No frontend framework or npm runtime dependencies.
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Run locally at `127.0.0.1:8787` |
+| `npm run db:local` | Apply local D1 migrations |
+| `npm run typecheck` | Check TypeScript |
+| `npm test` | Run Node tests with in-memory SQLite and mocked Spotify responses |
+| `npm run build` | Bundle a dry run; does not publish |
+| `npm run deploy` | Publish using `wrangler.production.jsonc` |
+
+| Location | Contents |
+| --- | --- |
+| `src/index.ts` | Routes, owner/session checks, bookmarks, and device selection |
+| `src/spotify.ts` | Spotify requests, token refresh, capture, and resume payload |
+| `src/crypto.ts` | Encryption, credential generation, and hashing |
+| `public/` | Web interface |
+| `migrations/` | D1 database schema |
+| `tests/` | Application tests; not a substitute for real device checks |
+| `docs/` | Deployment, Shortcut instructions, security, and verification |
+
+See the [API reference](docs/api.md) for integration details and the [manual verification plan](docs/manual-test-plan.md) before a release. The original instance has completed sign-in, bookmark capture, and explicit desktop playback checks. A complete physical iPhone/device matrix has not been independently verified.
+
+Pull requests and pushes to `main` run **Typecheck and build** in GitHub Actions. This checks compilation and Worker packaging; it does not run the application test suite, use Spotify credentials, or deploy to Cloudflare.

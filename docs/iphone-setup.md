@@ -1,16 +1,16 @@
-# Your iPhone setup
+# iPhone setup checklist
 
-Your bookmark page: [spotify-album-bookmarks.jtdelosh.workers.dev](https://spotify-album-bookmarks.jtdelosh.workers.dev).
-
-**Hosting is deployed.** The production configuration is `wrangler.production.jsonc`, with the assigned database UUID filled in. Your existing saved bookmark is copied. Production uses a new Spotify sign-in and separate keys; the PC app remains available through its local configuration. Physical iPhone setup/testing is still pending.
+Use the HTTPS address of your own deployed instance. If you have only run locally, complete the [deployment guide](deployment.md) first. Your phone cannot reach a computer's `127.0.0.1` address.
 
 ## Connect on your iPhone after deployment
 
 1. Add this exact additional redirect URI in your Spotify developer app settings:
 
-   `https://spotify-album-bookmarks.jtdelosh.workers.dev/auth/spotify/callback`
+   `https://YOUR_HOST/auth/spotify/callback`
 
-2. Open `https://spotify-album-bookmarks.jtdelosh.workers.dev` in Safari on the iPhone.
+   Replace `YOUR_HOST` with your deployed hostname. Keep the local callback registered if you also develop locally.
+
+2. Open your HTTPS bookmark page in Safari on the iPhone.
 3. Enter the production **SETUP_KEY** from the private local `.env.production` file, then approve Spotify access using the same Spotify account. The production key is separate from the PC app's key. Keep the encryption key private; it is not used in the Shortcut.
 4. Expand **iPhone Shortcut & account**, tap **Create / replace Shortcut credential**, and copy the credential shown once. It is separate from your setup key and Spotify tokens.
 
@@ -19,7 +19,7 @@ Your bookmark page: [spotify-album-bookmarks.jtdelosh.workers.dev](https://spoti
 1. Create a new Shortcut named **Bookmark current album**.
 2. Add **Get Contents of URL** and enter:
 
-   `https://spotify-album-bookmarks.jtdelosh.workers.dev/api/bookmarks/current`
+   `https://YOUR_HOST/api/bookmarks/current`
 
    Expand its options, set **Method** to **POST**, and add these headers:
 

@@ -1,6 +1,6 @@
 # Feasibility check — 20 October 2026
 
-**Decision: personal implementation is feasible, with remaining device checks.** James confirmed Premium and supplied a registered Client ID. Local Spotify authorization completed, the playback-state endpoint responded successfully, and James reported saving a bookmark works. The service is now deployed with approval and the bookmark copied. Production authorization, actual resume/time accuracy, and physical iPhone Shortcut behavior remain unverified.
+**Historical design research, updated after the initial deployment.** The personal instance completed local and hosted Spotify authorization, bookmark capture, and explicit desktop playback. A direct playback command resumed the saved track and subsequent state showed the expected time progression. The owner reported that the app was working. Physical iPhone Shortcut behavior and a broad device/multi-disc matrix have not been independently verified. This note records the research behind the implementation; use the README and deployment guide for current setup instructions.
 
 ## Verified official documentation
 
@@ -19,11 +19,8 @@
 | iOS transport | Apple's Get Contents of URL supports POST and JSON bodies. Header entry, first-run network permission, notifications, and one-tap Home Screen/widget execution require device validation. Notification envelope mode avoids depending on non-2xx handling to reach Show Notification. | [Apple Shortcuts API requests](https://support.apple.com/guide/shortcuts/request-your-first-api-apd58d46713f/ios) |
 | Hosting | Worker static assets can pass through the Worker first; D1 supports bindings, prepared statements, and SQL migrations. One Worker serves the API and public shell with private authenticated data. | [Asset binding](https://developers.cloudflare.com/workers/static-assets/binding/), [D1 API](https://developers.cloudflare.com/d1/worker-api/), [migrations](https://developers.cloudflare.com/d1/reference/migrations/) |
 
-## Remaining gates
+## Remaining device coverage
 
-1. Add the production callback in the existing Spotify app without removing the working PC callback: `https://spotify-album-bookmarks.jtdelosh.workers.dev/auth/spotify/callback`.
-2. Complete production PKCE using the same owner and requested scopes. Local authorization already returned an accepted `account_id`, and local bookmark capture was reported working. Actual playback control in production still needs observation.
-3. Validate save/resume on the actual iPhone and a multi-disc album, including device wake/availability, timestamp accuracy, and relinked tracks. No claim of successful live Spotify/iOS testing is made.
-4. The concrete hosting configuration was approved and deployed; James confirmed Workers Free, with no paid upgrade performed. The billing API was inaccessible, so the plan was not independently verified. Observe operational limits during normal use.
+Validate save/resume on physical iPhones and multi-disc albums, including device availability, timestamp accuracy, and relinked tracks. The successful explicit desktop check does not establish those scenarios. Check Spotify eligibility and hosting limits for each new installation; the original account's successful deployment does not establish another account's access or costs.
 
 Existing February documentation and later updates are not perfectly synchronized: the February announcement postpones some endpoint changes for existing integrations, while July changes account quotas. The implementation uses currently documented retained endpoints and the later quota behavior, and leaves account-specific access to the live gate.
