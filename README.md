@@ -35,7 +35,7 @@ Local HTTP is allowed only on explicit loopback addresses; production requires H
 - Save requires `is_playing=true`, a Spotify music track with album metadata, and a valid position. Paused tracks, local files, ads, episodes, audiobooks, and absent playback are rejected without overwriting a bookmark.
 - One row per owner and album; saving again updates that row. Position is the value Spotify reports, so capture is approximate.
 - Resume sends the saved album URI, **track URI offset**, and `position_ms` in one request. This supports disc-two tracks without calculating a track index. No automatic fallback changes playback to an isolated track.
-- Resume targets the current active, unrestricted Spotify device. Start playback in Spotify first if no device is active. The service does not launch Spotify, transfer playback, or promise it can wake a closed iPhone app.
+- Resume targets the current active, unrestricted Spotify device by default. Use **Refresh devices** and **Where to play** to explicitly choose an available device, including an idle one. Playback may move to the selected device. The service does not launch Spotify or promise it can wake a closed iPhone app.
 - Spotify's shuffle/repeat settings are left as they are. Shuffle may affect tracks played after the bookmarked track. Market relinking, catalog removals, or device restrictions can prevent a saved track from resuming.
 - Refresh tokens expire after six months under current Spotify rules. Expiration/revocation prompts reconnection; saved bookmarks remain. Shortcut credentials remain usable after ordinary reauthorization, but are revoked by Disconnect.
 
@@ -55,7 +55,8 @@ Web mutations require the session cookie, an exact matching `Origin`, and `X-CSR
 | `POST /api/bookmarks/current` | Read Spotify and upsert current album bookmark |
 | `GET /api/bookmarks` | Private bookmark list |
 | `DELETE /api/bookmarks/:albumId` | Delete one bookmark |
-| `POST /api/bookmarks/:albumId/resume` | Request playback on the active device |
+| `GET /api/devices` | List available, unrestricted Spotify devices (web session only) |
+| `POST /api/bookmarks/:albumId/resume` | Request playback on the active device, or send JSON `{ "deviceId": "…" }` for an explicitly chosen available device |
 | `GET /api/shortcut-credentials` | Active credential ID/date; never returns its secret |
 | `POST /api/shortcut-credentials` | Replace credential; display secret once |
 | `DELETE /api/shortcut-credentials` | Revoke all Shortcut credentials |
@@ -83,7 +84,7 @@ The deployed instance uses `wrangler.production.jsonc` and separate ignored `.en
 ## Troubleshooting
 
 - **Sign-in denied / 403:** check Premium, your app's user allowlist, private setup key, exact redirect URI, and requested playback permissions. Sign in with the original owner account.
-- **No active device:** open Spotify, start any track on the desired device, then tap Resume.
+- **No active device:** tap **Refresh devices**, choose the desired device under **Where to play**, then tap Resume. If it is absent, open Spotify on that device and refresh again.
 - **Paused playback:** press Play before Bookmark now or the Shortcut.
 - **Reconnect Spotify:** sign in again using the same owner. This preserves bookmarks; six-month token expiry is expected.
 - **429:** respect `Retry-After` when present. `spotify_quota` means shared developer quota; its reset time is not inferred. No automatic retry loop is used.

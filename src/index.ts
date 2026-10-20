@@ -140,6 +140,14 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
     const result = await env.DB.prepare('SELECT * FROM bookmarks WHERE account_id=? ORDER BY updated_at DESC,album_id').bind(session.account_id).all<Bookmark>();
     return json({ok:true,bookmarks:result.results.map(({account_id,...bookmark}) => bookmark)});
   }
+  if (path === '/api/devices' && request.method === 'GET') {
+    const response = await spotify(env,fetcher,'/me/player/devices');
+    const data = await response.json() as any;
+    return json({ok:true,devices:(Array.isArray(data.devices) ? data.devices : [])
+      .filter((d: any) => typeof d.id === 'string' && d.id && d.is_restricted !== true)
+      .map((d: any) => ({id:d.id,name:typeof d.name === 'string' ? d.name : 'Spotify device',
+        type:typeof d.type === 'string' ? d.type : '',isActive:d.is_active === true}))});
+  }
   const albumRoute = /^\/api\/bookmarks\/([A-Za-z0-9]{22})(\/resume)?$/.exec(path);
   if (albumRoute && ((albumRoute[2] && request.method === 'POST') || (!albumRoute[2] && request.method === 'DELETE'))) {
     const bookmark = await env.DB.prepare('SELECT * FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,albumRoute[1]).first<Bookmark>();
@@ -149,12 +157,30 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
       return json({ok:true,message:'Bookmark deleted.'});
     }
     await rate(env,`resume:${session.account_id}`,15);
-    const playback = await spotify(env,fetcher,'/me/player');
-    const state = playback.status === 204 ? null : await playback.json() as any;
-    if (!state?.device?.id || state.device.is_active !== true) throw new AppError(409,'no_device','Open Spotify and play something on the device you want to use, then tap Resume again.');
-    if (state.device.is_restricted) throw new AppError(403,'restricted_device','This Spotify device cannot be controlled. Choose another device in Spotify.');
-    await spotify(env,fetcher,`/me/player/play?device_id=${encodeURIComponent(state.device.id)}`,{method:'PUT',body:JSON.stringify(resumeBody(bookmark))});
-    return json({ok:true,message:`Resume requested on ${typeof state.device.name === 'string' ? state.device.name : 'your active Spotify device'}.`});
+    const text = await limitedText(request);
+    let selected: string | undefined;
+    if (text) {
+      let body: any;
+      try { body = JSON.parse(text); } catch { throw new AppError(400,'device_request','Choose a Spotify device and try again.'); }
+      if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.deviceId !== 'string' || !body.deviceId || body.deviceId.length > 256)
+        throw new AppError(400,'device_request','Choose a Spotify device and try again.');
+      selected = body.deviceId;
+    }
+    let device: any;
+    if (selected) {
+      const response = await spotify(env,fetcher,'/me/player/devices');
+      const data = await response.json() as any;
+      device = Array.isArray(data.devices) ? data.devices.find((d: any) => d.id === selected) : undefined;
+      if (!device) throw new AppError(409,'device_unavailable','That device is no longer available. Refresh devices and choose again.');
+    } else {
+      const playback = await spotify(env,fetcher,'/me/player');
+      const state = playback.status === 204 ? null : await playback.json() as any;
+      device = state?.device;
+      if (!device?.id || device.is_active !== true) throw new AppError(409,'no_device','Spotify reports no active player. Refresh devices, choose where to play, then tap Resume again.');
+    }
+    if (device.is_restricted) throw new AppError(403,'restricted_device','This Spotify device cannot be controlled. Choose another device in Spotify.');
+    await spotify(env,fetcher,`/me/player/play?device_id=${encodeURIComponent(device.id)}`,{method:'PUT',body:JSON.stringify(resumeBody(bookmark))});
+    return json({ok:true,message:`Resume requested on ${typeof device.name === 'string' ? device.name : 'your Spotify device'}.`});
   }
   if (path === '/api/shortcut-credentials') {
     if (request.method === 'GET') {

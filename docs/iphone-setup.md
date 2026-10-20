@@ -36,6 +36,6 @@ Your bookmark page: [spotify-album-bookmarks.jtdelosh.workers.dev](https://spoti
 5. Start a Spotify music track and run the Shortcut once. Allow access to the host and notifications when prompted. Confirm the saved position appears on the web page.
 6. Use the Shortcut's details/share menu to **Add to Home Screen**, or add it to a Shortcuts widget. After setup, one tap saves your place while Spotify keeps playing.
 
-Resume from the album's **Resume** button in the Safari page. First activate the device you want to hear in Spotify. An optional second Shortcut can use **Open URLs** with the bookmark page address.
+Resume from the album's **Resume** button in the Safari page. To choose a device explicitly, tap **Refresh devices** and select it under **Where to play**, then tap Resume. If the device is absent, open Spotify there and refresh again. An optional second Shortcut can use **Open URLs** with the bookmark page address.
 
 This is a manual recipe for creating the Shortcut directly on the iPhone. No importable Apple-signed Shortcut file has been produced on this Windows computer. Do not share a Shortcut after adding its credential. The full [Shortcut guide](shortcut-setup.md) covers error responses, revocation, and network failures.

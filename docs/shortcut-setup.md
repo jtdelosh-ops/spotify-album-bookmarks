@@ -42,7 +42,7 @@ With `X-Shortcut-Response: notification`, server application errors return HTTP 
 
 ## Open bookmarks / resume
 
-An optional **Open bookmarks** Shortcut can contain a URL action for `https://YOUR_WORKER_HOST/` and **Open URLs**. Sign in in the browser, make your Spotify device active, then tap Resume beside an album. Resume does not require the save credential.
+An optional **Open bookmarks** Shortcut can contain a URL action for `https://YOUR_WORKER_HOST/` and **Open URLs**. Sign in in the browser, then tap Resume beside an album. Use **Refresh devices** and **Where to play** to choose a device explicitly if needed. Resume does not require the save credential.
 
 ## Credential safety and revocation
 

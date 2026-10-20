@@ -2,8 +2,9 @@ const $ = id => document.getElementById(id);
 let csrf = '';
 let busy = false;
 function status(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error',error); }
-async function api(path, method = 'GET') {
-  const response = await fetch(path,{method,headers:method === 'GET' ? {} : {'X-CSRF-Token':csrf},cache:'no-store'});
+async function api(path, method = 'GET', body) {
+  const response = await fetch(path,{method,headers:method === 'GET' ? {} : {'X-CSRF-Token':csrf,...(body ? {'Content-Type':'application/json'} : {})},
+    ...(body ? {body:JSON.stringify(body)} : {}),cache:'no-store'});
   let data;
   try { data = await response.json(); } catch { throw new Error('The service returned an unreadable response. Try again.'); }
   if (!response.ok) throw Object.assign(new Error(data.message || 'Request failed.'),{code:data.code});
@@ -19,6 +20,15 @@ async function action(task) {
 }
 function time(ms) { const s = Math.floor(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 function element(tag, text, cls) { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; }
+async function refreshDevices() {
+  const selected = $('playback-device').value;
+  const r = await api('/api/devices');
+  const options = [new Option('Active Spotify device','')];
+  for (const d of r.devices) options.push(new Option(`${d.name}${d.isActive ? ' (active)' : ''}`,d.id));
+  $('playback-device').replaceChildren(...options);
+  if (r.devices.some(d => d.id === selected)) $('playback-device').value = selected;
+  return r.devices.length;
+}
 async function render() {
   const data = await api('/api/bookmarks');
   $('bookmarks').replaceChildren(); $('empty').hidden = data.bookmarks.length !== 0;
@@ -33,7 +43,20 @@ async function render() {
     const saved = element('time',`Saved ${new Date(b.updated_at).toLocaleString()}`); saved.dateTime = new Date(b.updated_at).toISOString(); info.append(saved); card.append(info);
     const actions = element('div',null,'actions');
     const resume = element('button','Resume','secondary'); resume.setAttribute('aria-label',`Resume ${b.album_name}`);
-    resume.onclick = () => action(async () => { status('Requesting playback…'); const r = await api(`/api/bookmarks/${b.album_id}/resume`,'POST'); status(r.message); });
+    resume.onclick = () => action(async () => {
+      status('Requesting playback…');
+      const deviceId = $('playback-device').value;
+      try {
+        const r = await api(`/api/bookmarks/${b.album_id}/resume`,'POST',deviceId ? {deviceId} : undefined);
+        status(r.message);
+      } catch (error) {
+        if (['no_device','device_unavailable'].includes(error.code)) {
+          const count = await refreshDevices();
+          status(count ? 'Choose where to play above your albums, then tap Resume again.' : 'No controllable devices are visible. Open Spotify on your device, then refresh devices.',true);
+          $('playback-device').focus();
+        } else throw error;
+      }
+    });
     const remove = element('button','Delete','quiet'); remove.setAttribute('aria-label',`Delete bookmark for ${b.album_name}`);
     remove.onclick = () => { if (confirm(`Delete the bookmark for ${b.album_name}?`)) action(async () => { const r = await api(`/api/bookmarks/${b.album_id}`,'DELETE'); await render(); status(r.message); }); };
     actions.append(resume,remove); card.append(actions); $('bookmarks').append(card);
@@ -45,6 +68,7 @@ async function credentialStatus() {
 }
 function hideCredential() { $('credential').value = ''; $('credential-box').hidden = true; }
 $('save').onclick = () => action(async () => { status('Saving your place…'); const r = await api('/api/bookmarks/current','POST'); await render(); status(r.message); });
+$('refresh-devices').onclick = () => action(async () => { const count = await refreshDevices(); status(count ? 'Choose where to play, then tap an album’s Resume button.' : 'No controllable devices are visible. Open Spotify, then refresh devices.'); });
 $('create-key').onclick = () => {
   if (!confirm('Create a new credential? Any existing Shortcut credential will stop working.')) return;
   action(async () => { const r = await api('/api/shortcut-credentials','POST'); $('credential').value = r.credential; $('credential-box').hidden = false; await credentialStatus(); status(r.message); });

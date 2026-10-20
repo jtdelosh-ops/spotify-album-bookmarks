@@ -20,7 +20,9 @@
     </section>
     <section id="library" hidden>
       <div class="section-title"><div><p class="eyebrow">SAVED FOR LATER</p><h2>Your albums</h2></div><button id="save">Bookmark now</button></div>
-      <p class="hint">Save while music is playing. To resume, first make your preferred device active in Spotify.</p>
+      <p class="hint">Save while music is playing. Resume uses your active Spotify device, or choose a device below.</p>
+      <label for="playback-device">Where to play</label>
+      <div class="device-controls"><select id="playback-device"><option value="">Active Spotify device</option></select><button id="refresh-devices" class="quiet">Refresh devices</button></div>
       <p id="empty" class="panel" hidden>Your shelf is empty. Play an album in Spotify and tap <strong>Bookmark now</strong>.</p>
       <div id="bookmarks" class="cards"></div>
       <details class="panel"><summary>iPhone Shortcut &amp; account</summary>
