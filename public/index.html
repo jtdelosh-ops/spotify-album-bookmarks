@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#142720">
+  <title>Album Bookmarks</title><link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><a class="brand" href="/" aria-label="Album Bookmarks home">AB<span> / Spotify</span></a><span class="personal">Your listening shelf</span></header>
+    <section class="intro"><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p><h1>Long albums.<br>A little place to pause.</h1><p>Keep your place in a music album, then return to the same track and moment.</p></section>
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="signin" class="panel" hidden>
+      <h2>Connect your Spotify</h2><p>Use your private setup key, then approve Spotify access. A Premium account is required.</p>
+      <form action="/auth/spotify/start" method="post">
+        <label for="setup-key">Private setup key</label><input id="setup-key" name="setup_key" type="password" required autocomplete="off" minlength="32">
+        <button type="submit">Continue with Spotify</button>
+      </form>
+    </section>
+    <section id="library" hidden>
+      <div class="section-title"><div><p class="eyebrow">SAVED FOR LATER</p><h2>Your albums</h2></div><button id="save">Bookmark now</button></div>
+      <p class="hint">Save while music is playing. To resume, first make your preferred device active in Spotify.</p>
+      <p id="empty" class="panel" hidden>Your shelf is empty. Play an album in Spotify and tap <strong>Bookmark now</strong>.</p>
+      <div id="bookmarks" class="cards"></div>
+      <details class="panel"><summary>iPhone Shortcut &amp; account</summary>
+        <h3>Save with one tap</h3><p>Create a credential, then add it to your iPhone Shortcut. It can only save the current track. It cannot read your shelf or control playback.</p>
+        <p id="credential-status"></p>
+        <div class="actions"><button id="create-key" class="secondary">Create / replace Shortcut credential</button><button id="revoke-key" class="quiet">Revoke credential</button></div>
+        <div id="credential-box" hidden><p>Shown once. Copy it now and keep it private.</p><label for="credential">Shortcut credential</label><textarea id="credential" readonly rows="2" spellcheck="false" autocomplete="off"></textarea><button id="hide-key" class="quiet">Hide credential</button></div>
+        <ol><li>Add a URL action using <code id="endpoint"></code>.</li><li>Add <strong>Get Contents of URL</strong>: method <strong>POST</strong>, headers <strong>Authorization</strong> = <strong>Bearer YOUR_CREDENTIAL</strong> and <strong>X-Shortcut-Response</strong> = <strong>notification</strong>, and empty JSON body.</li><li>Get dictionary value <strong>message</strong> from the response and use <strong>Show Notification</strong>.</li><li>Run once to allow network access, then add the Shortcut to your Home Screen or widget.</li></ol>
+        <p>Keep Spotify tokens out of the Shortcut. Never share a Shortcut containing this credential.</p>
+        <hr><h3>Account</h3><p>Reconnect periodically when Spotify authorization expires. Your existing bookmarks stay saved.</p>
+        <div class="actions"><button id="reconnect" class="secondary">Reconnect Spotify</button><button id="logout" class="quiet">Sign out</button><button id="disconnect" class="quiet danger">Disconnect Spotify</button></div>
+      </details>
+    </section>
+    <footer>Playback stays in Spotify. Album artwork and music metadata provided by Spotify.<br>This is your personal bookmark shelf, independent of Spotify.</footer>
+  </main>
+</body>
+</html>
