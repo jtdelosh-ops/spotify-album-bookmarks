@@ -2,7 +2,7 @@
 
 A personal Cloudflare Worker that saves the music album, track, and position currently playing in Spotify. Save from an iPhone Shortcut without opening a companion app; resume from a small mobile page.
 
-**Status:** local implementation with mocked Spotify integration checks. No deployment or live Spotify/iPhone verification has been performed. See [feasibility](docs/feasibility.md) and [manual validation](docs/manual-test-plan.md) before relying on it.
+**Status:** deployed at [your bookmark page](https://spotify-album-bookmarks.jtdelosh.workers.dev). Production security/routing/database checks pass. Local Spotify sign-in completed and James reported that saving a bookmark works; that bookmark was copied to production. Production Spotify sign-in, live resume accuracy, and physical iPhone Shortcut execution remain to be checked. Start with [your iPhone setup](docs/iphone-setup.md).
 
 ## Requirements
 
@@ -77,6 +77,8 @@ Tests execute real application SQL in Node's in-memory SQLite and mock Spotify H
 ## Deployment, operations, and security
 
 Use [the deployment checklist](docs/deployment.md), [threat model](docs/security.md), and [manual test plan](docs/manual-test-plan.md). Unknown errors log only a random request ID and fixed event name. Workers automatic observability is disabled to reduce accidental OAuth URL capture; do not enable request tracing or log full request objects, URLs, headers, or bodies.
+
+The deployed instance uses `wrangler.production.jsonc` and separate ignored `.env.production` secrets. The generic `wrangler.jsonc` remains the PC development configuration. For an authorized production update, `npm run deploy` selects the production config and preserves the deployed secrets. Add `-- --secrets-file .env.production` only when intentionally uploading the production keys, including initial setup or an approved rotation.
 
 ## Troubleshooting
 

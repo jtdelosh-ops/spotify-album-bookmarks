@@ -1,6 +1,6 @@
 # Feasibility check — 20 October 2026
 
-**Decision: conditional go for a personal implementation.** No documented API blocker was found for a noncommercial service used by one Premium account. James confirmed Premium; the app registration/Client ID setup is still being established. Dashboard configuration, live OAuth permissions, playback calls, and iPhone Shortcut behavior have not yet been observed; these remain release gates, not completed checks.
+**Decision: personal implementation is feasible, with remaining device checks.** James confirmed Premium and supplied a registered Client ID. Local Spotify authorization completed, the playback-state endpoint responded successfully, and James reported saving a bookmark works. The service is now deployed with approval and the bookmark copied. Production authorization, actual resume/time accuracy, and physical iPhone Shortcut behavior remain unverified.
 
 ## Verified official documentation
 
@@ -21,9 +21,9 @@
 
 ## Remaining gates
 
-1. Confirm the existing Client ID's dashboard access and allowlist. This implementation should use a dedicated app or a deliberately approved existing app; do not overwrite unrelated app settings.
-2. Register the exact callback and complete live PKCE using the two requested scopes. Verify `account_id` and both player endpoints for this Client ID. Documentation eligibility is not evidence that a particular account/app is configured correctly.
+1. Add the production callback in the existing Spotify app without removing the working PC callback: `https://spotify-album-bookmarks.jtdelosh.workers.dev/auth/spotify/callback`.
+2. Complete production PKCE using the same owner and requested scopes. Local authorization already returned an accepted `account_id`, and local bookmark capture was reported working. Actual playback control in production still needs observation.
 3. Validate save/resume on the actual iPhone and a multi-disc album, including device wake/availability, timestamp accuracy, and relinked tracks. No claim of successful live Spotify/iOS testing is made.
-4. Approve the concrete hosting configuration before any cloud resource creation or public deployment. No cost or free-tier availability guarantee is made.
+4. The concrete hosting configuration was approved and deployed; James confirmed Workers Free, with no paid upgrade performed. The billing API was inaccessible, so the plan was not independently verified. Observe operational limits during normal use.
 
 Existing February documentation and later updates are not perfectly synchronized: the February announcement postpones some endpoint changes for existing integrations, while July changes account quotas. The implementation uses currently documented retained endpoints and the later quota behavior, and leaves account-specific access to the live gate.

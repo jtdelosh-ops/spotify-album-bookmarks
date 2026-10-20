@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spotify-album-bookmarks",
+  "account_id": "a6aeec7362e5322bf59ac0330ef68d2b",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "d1_databases": [{
+    "binding": "DB", "database_name": "spotify-album-bookmarks",
+    "database_id": "203197d1-c7f1-4cdc-a5e4-92cc800f18e6", "migrations_dir": "migrations"
+  }],
+  "vars": {
+    "APP_ORIGIN": "https://spotify-album-bookmarks.jtdelosh.workers.dev",
+    "SPOTIFY_CLIENT_ID": "d895ef8a19af4a0886d62503e2ec6aa7"
+  },
+  "triggers": { "crons": ["17 4 * * *"] },
+  "observability": { "enabled": false }
+}

@@ -1,35 +1,50 @@
 # Deployment and operations checklist
 
-Nothing in this checklist has been run against Cloudflare remotely. Resource creation, remote migration, secrets changes, and public deployment require approval of the concrete target configuration. Local `--dry-run` and `--local` commands do not publish this service.
+## Current deployed instance — 20 October 2026
+
+James approved creation/publication on Workers Free without a paid upgrade and confirmed the Free plan. The billing API was not accessible, so plan status is user-confirmed. No subscription or billing setting was changed.
+
+- URL: `https://spotify-album-bookmarks.jtdelosh.workers.dev`
+- Configuration: `wrangler.production.jsonc`
+- D1 database: `203197d1-c7f1-4cdc-a5e4-92cc800f18e6`, binding `DB`
+- Active Worker version: `995f361b-94f9-44fa-901d-dedaa454bccc`, 100% of traffic
+- Schema applied; one owner binding and one saved bookmark copied. PC Spotify credentials, sessions, OAuth transactions and Shortcut credentials were not copied.
+- Separate production keys were uploaded with `--secrets-file .env.production`; key values were not printed or committed.
+- Live checks passed for assets, security headers, unauthenticated access denial, Shortcut error envelopes, cross-origin rejection, Secure OAuth cookies, and one-use state. Metadata confirms the intended D1 binding, daily cleanup schedule, disabled preview URLs, and disabled automatic observability.
+- Production Spotify sign-in, live resume accuracy, and physical iPhone execution are pending. Follow [your iPhone setup](iphone-setup.md).
+
+The checklist below describes the general workflow. New resource creation, secret changes or public deployments must remain within the user's authorization. Local `--dry-run` and `--local` commands do not publish a service.
 
 ## Prepare a reviewable configuration
 
 - [ ] Confirm the intended Cloudflare account, available plan/limits, Worker name, D1 database name, and exact HTTPS origin. This project does not guarantee zero cost.
 - [ ] Confirm the intended Spotify Client ID and user allowlist; avoid changing an unrelated app. Register `https://YOUR_HOST/auth/spotify/callback` exactly.
-- [ ] In `wrangler.jsonc`, set `APP_ORIGIN` without a trailing slash and set `SPOTIFY_CLIENT_ID`. The Client ID is public. Choose a final hostname in advance; changing it requires updating Spotify's redirect URI and signing in again.
+- [ ] In `wrangler.production.jsonc`, verify the intended account, final `APP_ORIGIN` without a trailing slash, and `SPOTIFY_CLIENT_ID`. The Client ID is public. Changing the hostname requires updating Spotify's redirect URI and signing in again. The PC config is separate.
 - [ ] Generate separate production `ENCRYPTION_KEY` and `SETUP_KEY` as in README. Keep recoverable copies in a password manager. Do not reuse local keys.
 - [ ] Run `npm ci`, `npm run typecheck`, `npm test`, and `npm run build`. Check the source review and remaining live validation limits.
 - [ ] Approve resource creation and deployment against these names and this configuration.
 
 ## Commands after approval
 
+These describe initial creation, which has already completed for the current instance. Routine updates use `npm run deploy`; do not create another database or reimport the initial bookmark SQL for an ordinary update.
+
 ```sh
 npx wrangler login
-npx wrangler d1 create spotify-album-bookmarks
+npx wrangler d1 create spotify-album-bookmarks --config wrangler.production.jsonc
 ```
 
-Copy the returned UUID into `d1_databases[0].database_id` in `wrangler.jsonc`; verify the Cloudflare account before continuing. Then:
+Copy the returned UUID into `d1_databases[0].database_id` in `wrangler.production.jsonc`; verify the Cloudflare account before continuing. Then:
 
 ```sh
-npx wrangler d1 migrations apply DB --remote
-npx wrangler secret put ENCRYPTION_KEY
-npx wrangler secret put SETUP_KEY
-npm run deploy
+npx wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc
+npm run deploy -- --secrets-file .env.production
 ```
 
-Paste secrets interactively. Do not place them on command lines, in chat, or in configuration committed to Git. Wrangler's remote migration can change a real database: review the account, target, and migration list before confirming.
+Keep secrets in the ignored `.env.production` file. Do not place values on command lines, in chat, or in configuration committed to Git. Wrangler's remote migration can change a real database: review the account, target, and migration list before confirming.
 
-The first `wrangler secret put` can provision an undeployed Worker if none exists; it is included only in the approved deployment stage. For a custom domain, configure that exact domain in Cloudflare, verify it routes to this Worker, and set `APP_ORIGIN` to it before testing OAuth. The default workers.dev address must exactly match its configured origin if used.
+For the current instance, the actual publication used `npx wrangler deploy --config wrangler.production.jsonc --secrets-file .env.production`, which uploads the secrets with the Worker version. The `npm run deploy` script now selects that production config. Preserve the production keys unless deliberately performing the recovery/rotation procedure.
+
+For a custom domain, configure that exact domain in Cloudflare, verify it routes to this Worker, and set `APP_ORIGIN` to it before testing OAuth. The default workers.dev address must exactly match its configured origin if used.
 
 ## Verify after publishing
 
@@ -47,7 +62,7 @@ Store backups in an access-controlled encrypted location outside the public asse
 After approval, a manual export can use:
 
 ```sh
-npx wrangler d1 export DB --remote --output=backups/album-bookmarks.sql
+npx wrangler d1 export DB --remote --config wrangler.production.jsonc --output=backups/album-bookmarks.sql
 ```
 
 Create the ignored `backups/` directory first. Choose a backup retention policy; no recurring export or storage service is provisioned by this project. Review Cloudflare's current backup/Time Travel capabilities and retention for the chosen plan rather than assuming a guaranteed recovery window.
