@@ -9,7 +9,7 @@
 <body>
   <main>
     <header><a class="brand" href="/" aria-label="Album Bookmarks home">AB<span> / Spotify</span></a><span class="personal">Your listening shelf</span></header>
-    <section class="intro"><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p><h1>Different listening.<br>A place for each.</h1><p>Keep separate places in albums, playlists, and podcast episodes. Save while playing or paused, then return to the same moment.</p></section>
+    <section class="intro"><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p><h1>Your listening.<br>Saved moments.</h1><p>Add a bookmark whenever you want to keep a moment in Spotify, playing or paused. Give it a name and return whenever you like.</p></section>
     <p id="status" role="status" aria-live="polite"></p>
     <section id="signin" class="panel" hidden>
       <h2>Connect your Spotify</h2><p>Use your private setup key, then approve Spotify access. A Premium account is required.</p>
@@ -19,14 +19,14 @@
       </form>
     </section>
     <section id="library" hidden>
-      <div class="section-title"><div><p class="eyebrow">SAVED FOR LATER</p><h2>Your saved places</h2></div><button id="save">Bookmark now</button></div>
-      <p class="hint">Each album, playlist, or podcast episode keeps its own place. Saving again updates only that item. Resume uses your active Spotify device, or choose one below.</p>
+      <div class="section-title"><div><p class="eyebrow">SAVED FOR LATER</p><h2>Your bookmarks</h2></div><button id="save">Add bookmark</button></div>
+      <p class="hint">Every save adds a new bookmark. Keep as many points in the same music or podcast as you like; earlier bookmarks stay unchanged. Resume uses your active Spotify device, or choose one below.</p>
       <label for="playback-device">Where to play</label>
       <div class="device-controls"><select id="playback-device"><option value="">Active Spotify device</option></select><button id="refresh-devices" class="quiet">Refresh devices</button></div>
-      <p id="empty" class="panel" hidden>Your shelf is empty. Open music or a podcast in Spotify, playing or paused, and tap <strong>Bookmark now</strong>.</p>
+      <p id="empty" class="panel" hidden>Your shelf is empty. Open music or a podcast in Spotify, playing or paused, and tap <strong>Add bookmark</strong>.</p>
       <div id="bookmarks" class="cards"></div>
       <details class="panel"><summary>iPhone Shortcut &amp; account</summary>
-        <h3>Save with one tap</h3><p>Create a credential, then add it to your iPhone Shortcut. It can only save the current track or podcast episode, playing or paused. It cannot read your shelf or control playback.</p>
+        <h3>Save with one tap</h3><p>Each Shortcut run adds a new bookmark for the current track or podcast episode, playing or paused. It cannot read, rename, delete, or overwrite existing bookmarks, or control playback.</p>
         <p id="credential-status"></p>
         <div class="actions"><button id="create-key" class="secondary">Create / replace Shortcut credential</button><button id="revoke-key" class="quiet">Revoke credential</button></div>
         <div id="credential-box" hidden><p>Shown once. Copy it now and keep it private.</p><label for="credential">Shortcut credential</label><textarea id="credential" readonly rows="2" spellcheck="false" autocomplete="off"></textarea><button id="hide-key" class="quiet">Hide credential</button></div>

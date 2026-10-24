@@ -19,7 +19,7 @@ Complete Spotify sign-in in the mobile bookmark page first. Then expand **iPhone
 4. Add **Get Dictionary from Input** if your version of Shortcuts does not automatically treat the response as a dictionary. Its input is **Contents of URL**.
 5. Add **Get Dictionary Value**, key **message**, from the response dictionary.
 6. Add **Show Notification** with that dictionary value as its text. A fixed title such as **Album bookmark** is sufficient. `message` describes both success and application errors. Optionally use the `ok` boolean to vary the title.
-7. Open a Spotify music track or podcast episode, playing or paused, and run the Shortcut once. Allow network access to your host and notifications when prompted. The app automatically keeps a separate place per album, playlist, or episode; subsequent saves update only that item.
+7. Open a Spotify music track or podcast episode, playing or paused, and run the Shortcut once. Allow network access to your host and notifications when prompted. Each run adds a new independent bookmark, even for the same content; previous saves remain unchanged. Name bookmarks later on the web page if desired.
 8. In the Shortcut's details/share menu, choose **Add to Home Screen**, or select it in the Shortcuts widget. Optional Back Tap: Settings → Accessibility → Touch → Back Tap → choose the Shortcut. Menu labels may vary by iOS version.
 
 The action does not open a companion app. It cannot add a button inside Spotify. Spotify may be in the background while the Shortcut makes the request. OS permission prompts, an offline phone, a locked device, or notification settings can affect the experience and must be checked on your phone.
@@ -29,7 +29,7 @@ The action does not open a companion app. It cannot add a button inside Spotify.
 Successful save:
 
 ```json
-{"ok":true,"message":"Saved Long Album at 2:03 in Movement II."}
+{"ok":true,"bookmarkId":"...","message":"Added bookmark for Movement II at 2:03."}
 ```
 
 Example application error in notification mode:
@@ -42,7 +42,7 @@ With `X-Shortcut-Response: notification`, server application errors return HTTP 
 
 ## Open bookmarks / resume
 
-An optional **Open bookmarks** Shortcut can contain a URL action for `https://YOUR_WORKER_HOST/` and **Open URLs**. Sign in in the browser, then tap Resume beside a saved place. Use **Refresh devices** and **Where to play** to choose a device explicitly if needed. Resume does not require the save credential.
+An optional **Open bookmarks** Shortcut can contain a URL action for `https://YOUR_WORKER_HOST/` and **Open URLs**. Sign in in the browser, then tap Resume on a bookmark. Use Name/Rename to label it without changing its saved position. Use **Refresh devices** and **Where to play** to choose a playback device if needed. Resume does not require the save credential.
 
 ## Credential safety and revocation
 

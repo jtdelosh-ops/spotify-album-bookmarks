@@ -34,7 +34,7 @@ Use the HTTPS address of your own deployed instance. If you have only run locall
 3. Add **Get Dictionary Value**: key `message`, dictionary **Contents of URL**. If your iOS version does not recognize the response as a dictionary, insert **Get Dictionary from Input** before this action.
 4. Add **Show Notification** with the dictionary value as its text.
 5. Open music or a podcast episode, playing or paused, and run the Shortcut once. Allow access to the host and notifications when prompted. Confirm the saved position appears on the web page.
-6. Use the Shortcut's details/share menu to **Add to Home Screen**, or add it to a Shortcuts widget. After setup, one tap updates that album, playlist, or episode's place without changing the others.
+6. Use the Shortcut's details/share menu to **Add to Home Screen**, or add it to a Shortcuts widget. After setup, each tap adds a new save point without changing any earlier bookmark. Name or rename it afterward on the web page if desired.
 
 Resume from a saved place's **Resume** button in Safari. To choose a device explicitly, tap **Refresh devices** and select it under **Where to play**, then tap Resume. If absent, open Spotify there and refresh again. An optional second Shortcut can use **Open URLs** with the bookmark page address.
 

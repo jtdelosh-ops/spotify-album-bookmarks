@@ -165,12 +165,12 @@ export function bookmarkFromPlayback(data: any, account: string, now: number): B
     image = spotifyImage(album.images);
   }
   return {
-    account_id:account,bookmark_id:`${kind}_${contextId}`,context_type:kind,context_id:contextId,
+    account_id:account,bookmark_id:crypto.randomUUID(),label:'',context_type:kind,context_id:contextId,
     context_uri:`spotify:${kind}:${contextId}`,context_name:contextName,image_url:image,creator_name:creator,
     item_id:item.id,item_uri:`spotify:${episode ? 'episode' : 'track'}:${item.id}`,item_name:item.name,
     disc_number:track && Number.isInteger(item.disc_number) ? item.disc_number : null,
     track_number:track && Number.isInteger(item.track_number) ? item.track_number : null,
-    progress_ms:Math.min(data.progress_ms,item.duration_ms-1),duration_ms:item.duration_ms,updated_at:now
+    progress_ms:Math.min(data.progress_ms,item.duration_ms-1),duration_ms:item.duration_ms,created_at:now,updated_at:now
   };
 }
 export function resumeBody(bookmark: Bookmark): object {

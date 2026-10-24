@@ -1,16 +1,16 @@
 # Spotify Album Bookmarks
 
-**Keep separate places in albums, playlists, and podcast episodes.**
+**Add a save point for any moment in your Spotify listening.**
 
-A small, self-hosted app for switching between podcast listening, gym playlists, long albums, and other music without losing your place. Tap **Bookmark now** or run your iPhone Shortcut while Spotify is playing or paused. Later, open your shelf and tap **Resume**.
+A small, self-hosted app for keeping independent save points, like video game saves, across music and podcasts. Tap **Add bookmark** or run your iPhone Shortcut while Spotify is playing or paused. Every save creates a new entry. Later, open your shelf and tap **Resume** on the one you want.
 
-For example: keep a podcast episode at **23:45**, a gym playlist at **1:10 in its current song**, and an album at **track 15**. Each album, playlist, or episode gets one independent bookmark. Saving again updates only that item.
+For example: save **Before the gym** and **Evening listening** in the same album, plus a podcast at **23:45**. Add another bookmark whenever you like; previous saves stay unchanged. Each entry can have an optional name, and its own Resume and Delete actions.
 
 This is a personal app for **one Spotify account per deployment**. You host your own copy and connect your own Spotify developer app. It is independent of Spotify.
 
 ## What you get
 
-- A mobile-friendly shelf with Album, Playlist, and Podcast episode labels, saved times, and Resume/Delete buttons.
+- A flat, mobile-friendly shelf with independent bookmarks, optional names, saved times, and Resume/Delete actions.
 - An iPhone Shortcut to save current playback from the Home Screen or a widget.
 - Resume on your active Spotify player, or choose a computer, phone, or speaker under **Where to play**.
 - Album/playlist resume supplies the original context, saved track, and time together. Episode resume requests the saved episode at its saved time.
@@ -24,13 +24,15 @@ This is a personal app for **one Spotify account per deployment**. You host your
 flowchart LR
     A[Web page or iPhone Shortcut] -->|Save| B[Cloudflare Worker]
     B -->|Read current track and position| C[Spotify Web API]
-    B -->|Store one place per album, playlist or episode| D[(Cloudflare D1)]
+    B -->|Insert a new save point| D[(Cloudflare D1)]
     E[Web page: Resume] -->|Read saved bookmark| B
     B -->|Resume saved item and position| C
     C --> F[Your Spotify device]
 ```
 
-On save, the Worker reads Spotify's current playback state, including paused state. Music playing from a playlist is grouped by that playlist; other music is grouped by album. Podcasts are grouped by episode, including episodes played from a playlist. A podcast save does not overwrite another episode's saved position.
+On save, the Worker reads Spotify's current playback state, including paused state, and gives the new bookmark a random ID. It never uses an album, playlist, or episode ID to decide whether to overwrite a save. Several bookmarks can point to the exact same item or moment.
+
+Source details are retained to resume the right audio: music records its album/playlist context and track, while podcasts record the episode. After adding a bookmark, use **Name** or **Rename** to give it an optional label of up to 120 characters. Renaming changes only the label, not its audio, timestamp, or place in the list. Clearing the label restores the automatic item/time title.
 
 For music, resume sends the album/playlist URI, track URI offset, and saved time together. Using the track URI supports multi-disc albums. For a podcast, it sends the episode URI and position. Spotify's published play reference documents track URIs rather than episode URIs in the `uris` list, so episode playback needs a check on your actual client; an accepted command alone is not proof of playback. [Playback API](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback).
 
@@ -98,7 +100,7 @@ npm run dev
 
 Open [127.0.0.1:8787](http://127.0.0.1:8787), enter your setup key, and authorize Spotify. The first account to complete sign-in becomes the owner. Later sign-ins require that same account and the setup key. Reconnecting ends existing browser sessions and preserves bookmarks.
 
-Open a music track or podcast episode, playing or paused, and tap **Bookmark now**. To resume, use the active player or tap **Refresh devices**, select a device under **Where to play**, and tap **Resume**. Choosing another device may move playback there.
+Open a music track or podcast episode, playing or paused, and tap **Add bookmark**. To resume, use the active player or tap **Refresh devices**, select a device under **Where to play**, and tap **Resume** on a bookmark. Choosing another device may move playback there.
 
 Your iPhone cannot use the computer's loopback address. Deploy an HTTPS instance before setting up the real Shortcut.
 
@@ -129,12 +131,12 @@ After signing in to your hosted page:
 
 The [full Shortcut guide](docs/shortcut-setup.md) covers each action, examples, and revocation. This repository provides a manual recipe, not an importable `.shortcut` file.
 
-The Shortcut credential is separate from the setup key. It can **only save current playback**, not read your shelf or control playback. Replacing it invalidates the old credential; update the Shortcut afterward. Do not share a Shortcut containing your credential.
+The Shortcut credential is separate from the setup key. It can **only add a bookmark for current playback**, not read, rename, delete, or overwrite existing saves, or control playback. Replacing it invalidates the old credential; update the Shortcut afterward. Do not share a Shortcut containing your credential.
 
 ## Behavior and limitations
 
 - **Playing and paused saves are supported.** Spotify must still report a supported track/episode and a valid position. Closed/offline devices may return no state. Missing data, local files, ads, and audiobook chapters are rejected without overwriting a bookmark.
-- **One position per album, playlist, or episode.** No history of multiple positions within the same item or automatic progress tracking. Music outside playlist context is saved under its album.
+- **Every save adds an entry.** Repeated taps or Shortcut runs create separate bookmarks, even for the same item. There is no automatic replacement or progress tracking. Delete entries you no longer need.
 - **Timing is approximate.** Capture uses Spotify's reported position; network and device delays affect capture and resume.
 - **Devices must be available to Spotify.** Explicit selection can target an available idle device, but cannot guarantee waking a closed app or reaching an offline device.
 - **Shuffle and repeat stay as you set them.** Shuffle can change which track follows the bookmarked one.

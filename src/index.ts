@@ -124,20 +124,17 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
     const bookmark = bookmarkFromPlayback(data,account,now);
     if (bookmark.context_type === 'playlist') {
       const metadata = await playlistMetadata(env,fetcher,bookmark.context_id);
-      const previous = !metadata ? await env.DB.prepare('SELECT context_name,image_url FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?')
-        .bind(account,bookmark.bookmark_id).first<{context_name:string;image_url:string|null}>() : null;
+      const previous = !metadata ? await env.DB.prepare(`SELECT context_name,image_url FROM saved_bookmarks
+        WHERE account_id=? AND context_type='playlist' AND context_id=? ORDER BY created_at DESC,bookmark_id LIMIT 1`)
+        .bind(account,bookmark.context_id).first<{context_name:string;image_url:string|null}>() : null;
       bookmark.context_name = metadata?.name ?? previous?.context_name ?? bookmark.context_name;
       bookmark.image_url = metadata?.image ?? previous?.image_url ?? bookmark.image_url;
     }
     const columns = Object.keys(bookmark);
-    const saved = await env.DB.prepare(`INSERT INTO listening_bookmarks (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})
-      ON CONFLICT(account_id,bookmark_id) DO UPDATE SET ${columns.filter(c => !['account_id','bookmark_id'].includes(c)).map(c => `${c}=excluded.${c}`).join(',')}
-      WHERE excluded.updated_at >= listening_bookmarks.updated_at`)
+    await env.DB.prepare(`INSERT INTO saved_bookmarks (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`)
       .bind(...Object.values(bookmark)).run();
-    if (saved.meta.changes === 0) return json({ok:true,message:'A newer position was already saved for this item. That position was kept.'});
     const position = `${Math.floor(bookmark.progress_ms/60000)}:${String(Math.floor(bookmark.progress_ms/1000)%60).padStart(2,'0')}`;
-    return json({ok:true,message:bookmark.context_type === 'episode' ? `Saved ${bookmark.item_name} at ${position}.`
-      : `Saved ${bookmark.context_name} at ${position} in ${bookmark.item_name}.`});
+    return json({ok:true,bookmarkId:bookmark.bookmark_id,message:`Added bookmark for ${bookmark.item_name} at ${position}.`});
   }
   // A Shortcut credential grants only the save action, even if a browser session is also sent.
   if (request.headers.has('Authorization')) throw new AppError(403,'shortcut_scope','Shortcut credentials can only bookmark the current track.');
@@ -148,7 +145,7 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
     return json({ok:true,csrf:session.csrf_token,spotifyConnected:!!credentials});
   }
   if (path === '/api/bookmarks' && request.method === 'GET') {
-    const result = await env.DB.prepare('SELECT * FROM listening_bookmarks WHERE account_id=? ORDER BY updated_at DESC,bookmark_id').bind(session.account_id).all<Bookmark>();
+    const result = await env.DB.prepare('SELECT * FROM saved_bookmarks WHERE account_id=? ORDER BY created_at DESC,bookmark_id').bind(session.account_id).all<Bookmark>();
     return json({ok:true,bookmarks:result.results.map(({account_id,...bookmark}) => bookmark)});
   }
   if (path === '/api/devices' && request.method === 'GET') {
@@ -159,16 +156,29 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
       .map((d: any) => ({id:d.id,name:typeof d.name === 'string' ? d.name : 'Spotify device',
         type:typeof d.type === 'string' ? d.type : '',isActive:d.is_active === true}))});
   }
-  const bookmarkRoute = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22})(\/resume)?$/.exec(path);
-  if (bookmarkRoute && ((bookmarkRoute[2] && request.method === 'POST') || (!bookmarkRoute[2] && request.method === 'DELETE'))) {
+  const bookmarkRoute = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume)?$/.exec(path);
+  if (bookmarkRoute && ((bookmarkRoute[2] && request.method === 'POST') || (!bookmarkRoute[2] && ['DELETE','PATCH'].includes(request.method)))) {
     // Bare album IDs from older open pages remain valid for migrated album rows.
-    const bookmarkId = bookmarkRoute[1].includes('_') ? bookmarkRoute[1] : `album_${bookmarkRoute[1]}`;
-    const bookmark = await env.DB.prepare('SELECT * FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId).first<Bookmark>();
+    const bookmarkId = /^[A-Za-z0-9]{22}$/.test(bookmarkRoute[1]) ? `album_${bookmarkRoute[1]}` : bookmarkRoute[1];
+    const bookmark = await env.DB.prepare('SELECT * FROM saved_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId).first<Bookmark>();
     if (!bookmark) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
+    if (request.method === 'PATCH') {
+      if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new AppError(415,'content_type','Send a bookmark name as JSON.');
+      let body: any;
+      try { body = JSON.parse(await limitedText(request)); }
+      catch (error) { if (error instanceof AppError) throw error; throw new AppError(400,'bookmark_name','Enter a bookmark name of at most 120 characters.'); }
+      if (!body || typeof body.label !== 'string' || body.label.trim().length > 120) throw new AppError(400,'bookmark_name','Enter a bookmark name of at most 120 characters.');
+      const renamed = await env.DB.prepare('UPDATE saved_bookmarks SET label=?,updated_at=? WHERE account_id=? AND bookmark_id=? RETURNING bookmark_id')
+        .bind(body.label.trim(),now,session.account_id,bookmarkId).first();
+      if (!renamed) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
+      return json({ok:true,message:body.label.trim() ? 'Bookmark renamed.' : 'Bookmark name cleared.'});
+    }
     if (request.method === 'DELETE') {
+      const migrated = bookmarkId === `${bookmark.context_type}_${bookmark.context_id}`;
       await env.DB.batch([
-        env.DB.prepare('DELETE FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId),
-        ...(bookmark.context_type === 'album' ? [env.DB.prepare('DELETE FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,bookmark.context_id)] : [])
+        env.DB.prepare('DELETE FROM saved_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId),
+        ...(migrated ? [env.DB.prepare('DELETE FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId)] : []),
+        ...(migrated && bookmark.context_type === 'album' ? [env.DB.prepare('DELETE FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,bookmark.context_id)] : [])
       ]);
       return json({ok:true,message:'Bookmark deleted.'});
     }
