@@ -1,6 +1,6 @@
 import { AppError, type Env, type Fetch, type Session, type Bookmark } from './types.ts';
 import { hash, randomToken, encrypt, decrypt, equalSecret } from './crypto.ts';
-import { SCOPES, tokenExchange, storeAuthorization, spotify, spotifyFailure, bookmarkFromPlayback, resumeBody } from './spotify.ts';
+import { SCOPES, tokenExchange, storeAuthorization, spotify, spotifyFailure, bookmarkFromPlayback, playlistMetadata, resumeBody } from './spotify.ts';
 
 const minute = 60000;
 const day = 86400000;
@@ -119,14 +119,25 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
   if (path === '/api/bookmarks/current' && request.method === 'POST') {
     const account = await bookmarkAccount(request,env);
     await rate(env,`save:${account}`,30);
-    const response = await spotify(env,fetcher,'/me/player');
+    const response = await spotify(env,fetcher,'/me/player?additional_types=track,episode');
     const data = response.status === 204 ? null : await response.json();
     const bookmark = bookmarkFromPlayback(data,account,now);
+    if (bookmark.context_type === 'playlist') {
+      const metadata = await playlistMetadata(env,fetcher,bookmark.context_id);
+      const previous = !metadata ? await env.DB.prepare('SELECT context_name,image_url FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?')
+        .bind(account,bookmark.bookmark_id).first<{context_name:string;image_url:string|null}>() : null;
+      bookmark.context_name = metadata?.name ?? previous?.context_name ?? bookmark.context_name;
+      bookmark.image_url = metadata?.image ?? previous?.image_url ?? bookmark.image_url;
+    }
     const columns = Object.keys(bookmark);
-    await env.DB.prepare(`INSERT INTO bookmarks (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})
-      ON CONFLICT(account_id,album_id) DO UPDATE SET ${columns.filter(c => !['account_id','album_id'].includes(c)).map(c => `${c}=excluded.${c}`).join(',')}`)
+    const saved = await env.DB.prepare(`INSERT INTO listening_bookmarks (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})
+      ON CONFLICT(account_id,bookmark_id) DO UPDATE SET ${columns.filter(c => !['account_id','bookmark_id'].includes(c)).map(c => `${c}=excluded.${c}`).join(',')}
+      WHERE excluded.updated_at >= listening_bookmarks.updated_at`)
       .bind(...Object.values(bookmark)).run();
-    return json({ok:true,message:`Saved ${bookmark.album_name} at ${Math.floor(bookmark.progress_ms/60000)}:${String(Math.floor(bookmark.progress_ms/1000)%60).padStart(2,'0')} in ${bookmark.track_name}.`});
+    if (saved.meta.changes === 0) return json({ok:true,message:'A newer position was already saved for this item. That position was kept.'});
+    const position = `${Math.floor(bookmark.progress_ms/60000)}:${String(Math.floor(bookmark.progress_ms/1000)%60).padStart(2,'0')}`;
+    return json({ok:true,message:bookmark.context_type === 'episode' ? `Saved ${bookmark.item_name} at ${position}.`
+      : `Saved ${bookmark.context_name} at ${position} in ${bookmark.item_name}.`});
   }
   // A Shortcut credential grants only the save action, even if a browser session is also sent.
   if (request.headers.has('Authorization')) throw new AppError(403,'shortcut_scope','Shortcut credentials can only bookmark the current track.');
@@ -137,7 +148,7 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
     return json({ok:true,csrf:session.csrf_token,spotifyConnected:!!credentials});
   }
   if (path === '/api/bookmarks' && request.method === 'GET') {
-    const result = await env.DB.prepare('SELECT * FROM bookmarks WHERE account_id=? ORDER BY updated_at DESC,album_id').bind(session.account_id).all<Bookmark>();
+    const result = await env.DB.prepare('SELECT * FROM listening_bookmarks WHERE account_id=? ORDER BY updated_at DESC,bookmark_id').bind(session.account_id).all<Bookmark>();
     return json({ok:true,bookmarks:result.results.map(({account_id,...bookmark}) => bookmark)});
   }
   if (path === '/api/devices' && request.method === 'GET') {
@@ -148,12 +159,17 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
       .map((d: any) => ({id:d.id,name:typeof d.name === 'string' ? d.name : 'Spotify device',
         type:typeof d.type === 'string' ? d.type : '',isActive:d.is_active === true}))});
   }
-  const albumRoute = /^\/api\/bookmarks\/([A-Za-z0-9]{22})(\/resume)?$/.exec(path);
-  if (albumRoute && ((albumRoute[2] && request.method === 'POST') || (!albumRoute[2] && request.method === 'DELETE'))) {
-    const bookmark = await env.DB.prepare('SELECT * FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,albumRoute[1]).first<Bookmark>();
+  const bookmarkRoute = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22})(\/resume)?$/.exec(path);
+  if (bookmarkRoute && ((bookmarkRoute[2] && request.method === 'POST') || (!bookmarkRoute[2] && request.method === 'DELETE'))) {
+    // Bare album IDs from older open pages remain valid for migrated album rows.
+    const bookmarkId = bookmarkRoute[1].includes('_') ? bookmarkRoute[1] : `album_${bookmarkRoute[1]}`;
+    const bookmark = await env.DB.prepare('SELECT * FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId).first<Bookmark>();
     if (!bookmark) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
     if (request.method === 'DELETE') {
-      await env.DB.prepare('DELETE FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,albumRoute[1]).run();
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId),
+        ...(bookmark.context_type === 'album' ? [env.DB.prepare('DELETE FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,bookmark.context_id)] : [])
+      ]);
       return json({ok:true,message:'Bookmark deleted.'});
     }
     await rate(env,`resume:${session.account_id}`,15);

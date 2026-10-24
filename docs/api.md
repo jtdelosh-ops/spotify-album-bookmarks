@@ -9,11 +9,11 @@ A Shortcut uses its own Bearer credential only for `POST /api/bookmarks/current`
 | `POST /auth/spotify/start` | Same-origin form with private `setup_key`; begin PKCE sign-in |
 | `GET /auth/spotify/callback` | One-use, browser-bound Spotify callback |
 | `GET /api/session` | Session state, CSRF token, and Spotify connection state |
-| `POST /api/bookmarks/current` | Read Spotify and create/update the current album's bookmark |
+| `POST /api/bookmarks/current` | Save current playback, playing or paused; update only that album, playlist, or episode |
 | `GET /api/bookmarks` | List private bookmarks |
-| `DELETE /api/bookmarks/:albumId` | Delete one bookmark |
+| `DELETE /api/bookmarks/:bookmarkId` | Delete one bookmark |
 | `GET /api/devices` | List available, unrestricted devices |
-| `POST /api/bookmarks/:albumId/resume` | Resume on the active device; optional JSON `{ "deviceId": "chosen-device-id" }` selects an available device |
+| `POST /api/bookmarks/:bookmarkId/resume` | Resume on the active device; optional JSON `{ "deviceId": "chosen-device-id" }` selects an available device |
 | `GET /api/shortcut-credentials` | Active credential IDs and creation dates; never secrets |
 | `POST /api/shortcut-credentials` | Replace the credential; return its secret once |
 | `DELETE /api/shortcut-credentials` | Revoke all Shortcut credentials |
@@ -21,6 +21,8 @@ A Shortcut uses its own Bearer credential only for `POST /api/bookmarks/current`
 | `POST /api/disconnect` | Remove Spotify tokens, end all sessions, revoke Shortcut access; retain bookmarks |
 
 The authorization start form requires the setup key and origin validation. Its callback validates browser-bound state instead of an existing session.
+
+Bookmark IDs have the form `album_SPOTIFY_ID`, `playlist_SPOTIFY_ID`, or `episode_SPOTIFY_ID`. Use the `bookmark_id` returned by the list endpoint. Bare album IDs remain accepted for old album Resume/Delete URLs. List rows use `context_type`, `context_id`, `context_name`, `context_uri`, `item_id`, `item_name`, `item_uri`, `image_url`, `creator_name`, saved position/duration, and optional disc/track numbers. The owner account ID is omitted.
 
 ## Errors and Shortcuts
 

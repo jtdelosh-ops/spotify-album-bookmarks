@@ -2,9 +2,9 @@
 
 Complete Spotify sign-in in the mobile bookmark page first. Then expand **iPhone Shortcut & account** and create a credential. Copy the value when shown; it cannot be retrieved later. Creating a new one revokes the previous one.
 
-## Bookmark current album
+## Bookmark listening
 
-1. Open Apple's Shortcuts app and create a shortcut named **Bookmark current album**.
+1. Open Apple's Shortcuts app and create a shortcut named **Bookmark listening**. Existing Shortcuts do not need new URLs, headers, or credentials for this upgrade.
 2. Add **URL** with `https://YOUR_WORKER_HOST/api/bookmarks/current`. Replace the host with your reviewed deployment's exact HTTPS address.
 3. Add **Get Contents of URL**, using that URL. Expand the action's options and set:
 
@@ -19,7 +19,7 @@ Complete Spotify sign-in in the mobile bookmark page first. Then expand **iPhone
 4. Add **Get Dictionary from Input** if your version of Shortcuts does not automatically treat the response as a dictionary. Its input is **Contents of URL**.
 5. Add **Get Dictionary Value**, key **message**, from the response dictionary.
 6. Add **Show Notification** with that dictionary value as its text. A fixed title such as **Album bookmark** is sufficient. `message` describes both success and application errors. Optionally use the `ok` boolean to vary the title.
-7. Play a Spotify music track and run the Shortcut once. Allow network access to your host and notifications when prompted. Complete setup before expecting one-tap behavior.
+7. Open a Spotify music track or podcast episode, playing or paused, and run the Shortcut once. Allow network access to your host and notifications when prompted. The app automatically keeps a separate place per album, playlist, or episode; subsequent saves update only that item.
 8. In the Shortcut's details/share menu, choose **Add to Home Screen**, or select it in the Shortcuts widget. Optional Back Tap: Settings → Accessibility → Touch → Back Tap → choose the Shortcut. Menu labels may vary by iOS version.
 
 The action does not open a companion app. It cannot add a button inside Spotify. Spotify may be in the background while the Shortcut makes the request. OS permission prompts, an offline phone, a locked device, or notification settings can affect the experience and must be checked on your phone.
@@ -35,14 +35,14 @@ Successful save:
 Example application error in notification mode:
 
 ```json
-{"ok":false,"code":"nothing_playing","message":"Play a music track in Spotify, then bookmark it. Paused tracks are not saved.","httpStatus":409,"requestId":"..."}
+{"ok":false,"code":"nothing_playing","message":"Open a track or podcast episode in Spotify, playing or paused, then bookmark it. Spotify is not reporting a playback position.","httpStatus":409,"requestId":"..."}
 ```
 
 With `X-Shortcut-Response: notification`, server application errors return HTTP 200 with `ok:false` and the original status in `httpStatus`. This lets notification actions run even on iOS versions that stop on HTTP errors. It does not suppress authentication or rate limits. Without this header, errors use normal HTTP statuses. A network/OS failure may stop the Shortcut before the server response; Shortcuts must show its own error in that case.
 
 ## Open bookmarks / resume
 
-An optional **Open bookmarks** Shortcut can contain a URL action for `https://YOUR_WORKER_HOST/` and **Open URLs**. Sign in in the browser, then tap Resume beside an album. Use **Refresh devices** and **Where to play** to choose a device explicitly if needed. Resume does not require the save credential.
+An optional **Open bookmarks** Shortcut can contain a URL action for `https://YOUR_WORKER_HOST/` and **Open URLs**. Sign in in the browser, then tap Resume beside a saved place. Use **Refresh devices** and **Where to play** to choose a device explicitly if needed. Resume does not require the save credential.
 
 ## Credential safety and revocation
 

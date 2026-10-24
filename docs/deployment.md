@@ -54,6 +54,20 @@ Pull the intended changes, install locked dependencies with `npm ci`, review any
 
 An update to Worker code does not automatically apply D1 migrations. For schema changes, back up first, review compatibility, and explicitly apply the intended migrations with the production config.
 
+### Upgrade to albums, playlists, and episodes
+
+This upgrade needs a short, controlled pause in bookmark changes:
+
+1. Stop web and Shortcut saves and bookmark deletions, and let any in-flight requests finish. Keep this pause in place until the new Worker version is active. Spotify listening itself can continue. This is an operator-controlled window; the migration does not block the old Worker from accepting writes.
+2. Export a private backup. Record the legacy bookmark IDs, positions, and dates for comparison.
+3. Apply `0002_listening_bookmarks.sql` using the remote migration command above. It creates `listening_bookmarks` and copies every existing album bookmark with its original track, position, and date. Credentials, sessions, and Shortcut credentials are unchanged.
+4. Verify copied IDs, tracks, positions, dates, and counts. Confirm the legacy data has not changed since the copy. If a save or deletion occurred in the window, stop the release and reconcile the staged copy with the latest legacy data, including deletions, under a fresh no-writes window before switching versions. Counts alone cannot detect a changed position. Do not simply rerun the migration file or clear an active new table.
+5. Deploy the reviewed code/assets and confirm the new Worker version is active. Then resume web/Shortcut use and reload open bookmark pages.
+
+The new app reads/writes the new table; the original `bookmarks` table is retained as a recovery copy. Deleting an album bookmark removes its recovery row too, so deleted entries are not silently retained there. If a controlled no-writes window cannot be maintained, postpone this release and use an explicitly reviewed maintenance or reconciliation mechanism.
+
+Rolling back code alone would show the original table, which does not contain later saves; it is not a full rollback of listening progress. Recover using an appropriate backup/data migration. Never rerun the initial bookmark import on an upgrade.
+
 For a custom domain, configure that exact domain in Cloudflare, verify it routes to this Worker, and set `APP_ORIGIN` to it before testing OAuth. The default workers.dev address must exactly match its configured origin if used.
 
 ## Verify after publishing

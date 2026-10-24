@@ -1,19 +1,19 @@
 # Spotify Album Bookmarks
 
-**Save your place in an album. Come back to the same track and moment.**
+**Keep separate places in albums, playlists, and podcast episodes.**
 
-A small, self-hosted app for listening to long albums, DJ mixes, and multi-disc releases across several sessions. While music is playing, tap **Bookmark now** on the web page or run an iPhone Shortcut. Later, open your shelf and tap **Resume**.
+A small, self-hosted app for switching between podcast listening, gym playlists, long albums, and other music without losing your place. Tap **Bookmark now** or run your iPhone Shortcut while Spotify is playing or paused. Later, open your shelf and tap **Resume**.
 
-For example: save track 15 at **1:10**, listen to something else, then return to that album at **1:10 in track 15**. Each album gets one bookmark; saving it again replaces its previous position.
+For example: keep a podcast episode at **23:45**, a gym playlist at **1:10 in its current song**, and an album at **track 15**. Each album, playlist, or episode gets one independent bookmark. Saving again updates only that item.
 
 This is a personal app for **one Spotify account per deployment**. You host your own copy and connect your own Spotify developer app. It is independent of Spotify.
 
 ## What you get
 
-- A mobile-friendly shelf with album artwork, track names, saved times, and Resume/Delete buttons.
+- A mobile-friendly shelf with Album, Playlist, and Podcast episode labels, saved times, and Resume/Delete buttons.
 - An iPhone Shortcut to save current playback from the Home Screen or a widget.
 - Resume on your active Spotify player, or choose a computer, phone, or speaker under **Where to play**.
-- Album-context playback: resume supplies the album, saved track, and saved time together.
+- Album/playlist resume supplies the original context, saved track, and time together. Episode resume requests the saved episode at its saved time.
 - Private bookmarks stored in your own Cloudflare Worker and D1 database.
 
 **Saving is manual.** The app does not continuously track your listening or pause Spotify when you bookmark. It does not download or stream audio; playback stays in Spotify.
@@ -24,13 +24,17 @@ This is a personal app for **one Spotify account per deployment**. You host your
 flowchart LR
     A[Web page or iPhone Shortcut] -->|Save| B[Cloudflare Worker]
     B -->|Read current track and position| C[Spotify Web API]
-    B -->|Store one bookmark per album| D[(Cloudflare D1)]
+    B -->|Store one place per album, playlist or episode| D[(Cloudflare D1)]
     E[Web page: Resume] -->|Read saved bookmark| B
-    B -->|Play album, track and saved position| C
+    B -->|Resume saved item and position| C
     C --> F[Your Spotify device]
 ```
 
-On save, the Worker asks Spotify what is playing and stores the album ID, track ID, playback position, and display metadata. On resume, it sends the album URI, the track URI as an offset, and the saved time in one request. Using the track URI supports multi-disc albums without assuming track numbers are unique across the release.
+On save, the Worker reads Spotify's current playback state, including paused state. Music playing from a playlist is grouped by that playlist; other music is grouped by album. Podcasts are grouped by episode, including episodes played from a playlist. A podcast save does not overwrite another episode's saved position.
+
+For music, resume sends the album/playlist URI, track URI offset, and saved time together. Using the track URI supports multi-disc albums. For a podcast, it sends the episode URI and position. Spotify's published play reference documents track URIs rather than episode URIs in the `uris` list, so episode playback needs a check on your actual client; an accepted command alone is not proof of playback. [Playback API](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback).
+
+Playlist names are fetched when Spotify permits it. If metadata is unavailable, the app keeps a previously known name or shows a stable label such as **Playlist abc123**. Saving the position does not require extra playlist permissions.
 
 Spotify sign-in uses PKCE and requests `user-read-playback-state` and `user-modify-playback-state`. No Spotify client secret is needed.
 
@@ -94,7 +98,7 @@ npm run dev
 
 Open [127.0.0.1:8787](http://127.0.0.1:8787), enter your setup key, and authorize Spotify. The first account to complete sign-in becomes the owner. Later sign-ins require that same account and the setup key. Reconnecting ends existing browser sessions and preserves bookmarks.
 
-Play a music track and tap **Bookmark now**. To resume, use the active player or tap **Refresh devices**, select a device under **Where to play**, and tap **Resume**. Choosing another device may move playback there.
+Open a music track or podcast episode, playing or paused, and tap **Bookmark now**. To resume, use the active player or tap **Refresh devices**, select a device under **Where to play**, and tap **Resume**. Choosing another device may move playback there.
 
 Your iPhone cannot use the computer's loopback address. Deploy an HTTPS instance before setting up the real Shortcut.
 
@@ -111,7 +115,7 @@ The guide also covers updates, backups, and key recovery.
 After signing in to your hosted page:
 
 1. Expand **iPhone Shortcut & account**, choose **Create / replace Shortcut credential**, and copy the value shown once.
-2. In Shortcuts, create **Bookmark current album**. Add **Get Contents of URL** for `https://YOUR_HOST/api/bookmarks/current`.
+2. In Shortcuts, create **Bookmark listening**. Add **Get Contents of URL** for `https://YOUR_HOST/api/bookmarks/current`.
 3. Set method **POST**, an empty JSON body, and these headers:
 
    | Header | Value |
@@ -121,7 +125,7 @@ After signing in to your hosted page:
    | `Content-Type` | `application/json` |
 
 4. Get the response dictionary's **message** value and pass it to **Show Notification**.
-5. Run once while Spotify music is playing, allow the requested permissions, and add the Shortcut to your Home Screen or widget.
+5. Run once with music or a podcast open in Spotify, playing or paused, allow the requested permissions, and add the Shortcut to your Home Screen or widget. Existing Shortcuts keep their URL, headers, and credential.
 
 The [full Shortcut guide](docs/shortcut-setup.md) covers each action, examples, and revocation. This repository provides a manual recipe, not an importable `.shortcut` file.
 
@@ -129,8 +133,8 @@ The Shortcut credential is separate from the setup key. It can **only save curre
 
 ## Behavior and limitations
 
-- **Music must be playing when you save.** Paused playback, local files, ads, episodes, audiobooks, and missing positions are rejected without overwriting a bookmark.
-- **One position per album.** No bookmark history or automatic progress tracking.
+- **Playing and paused saves are supported.** Spotify must still report a supported track/episode and a valid position. Closed/offline devices may return no state. Missing data, local files, ads, and audiobook chapters are rejected without overwriting a bookmark.
+- **One position per album, playlist, or episode.** No history of multiple positions within the same item or automatic progress tracking. Music outside playlist context is saved under its album.
 - **Timing is approximate.** Capture uses Spotify's reported position; network and device delays affect capture and resume.
 - **Devices must be available to Spotify.** Explicit selection can target an available idle device, but cannot guarantee waking a closed app or reaching an offline device.
 - **Shuffle and repeat stay as you set them.** Shuffle can change which track follows the bookmarked one.
@@ -151,7 +155,7 @@ Never commit `.dev.vars`, `.env.production`, database exports, or populated Shor
 | Symptom | What to do |
 | --- | --- |
 | No active device, even though Spotify is open | **Refresh devices**, choose the intended device under **Where to play**, then Resume. If absent, open Spotify there and refresh. |
-| Nothing saves | Play a supported music track using the account you connected. Paused tracks are not saved. |
+| Nothing saves | Open a supported track or podcast episode using the connected account. Playing or paused is fine; Spotify must still report its position. |
 | Sign-in fails | Check the setup key, original owner account, app access, and exact callback. Both playback permissions are required. |
 | Reconnect requested | Authorize the same account again. Your bookmarks remain. |
 | Shortcut stopped after replacing its credential | Update the Authorization header. Include `Bearer` followed by one space and the new credential. |
@@ -175,7 +179,7 @@ TypeScript Worker, plain HTML/CSS/JavaScript, and D1 SQL. No frontend framework 
 | Location | Contents |
 | --- | --- |
 | `src/index.ts` | Routes, owner/session checks, bookmarks, and device selection |
-| `src/spotify.ts` | Spotify requests, token refresh, capture, and resume payload |
+| `src/spotify.ts` | Spotify requests, token refresh, automatic context selection, and resume payload |
 | `src/crypto.ts` | Encryption, credential generation, and hashing |
 | `public/` | Web interface |
 | `migrations/` | D1 database schema |

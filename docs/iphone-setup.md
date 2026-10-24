@@ -14,9 +14,9 @@ Use the HTTPS address of your own deployed instance. If you have only run locall
 3. Enter the production **SETUP_KEY** from the private local `.env.production` file, then approve Spotify access using the same Spotify account. The production key is separate from the PC app's key. Keep the encryption key private; it is not used in the Shortcut.
 4. Expand **iPhone Shortcut & account**, tap **Create / replace Shortcut credential**, and copy the credential shown once. It is separate from your setup key and Spotify tokens.
 
-## Build Bookmark current album in Shortcuts
+## Build Bookmark listening in Shortcuts
 
-1. Create a new Shortcut named **Bookmark current album**.
+1. Create a new Shortcut named **Bookmark listening**. Existing Shortcuts can keep their name, URL, headers, and credential.
 2. Add **Get Contents of URL** and enter:
 
    `https://YOUR_HOST/api/bookmarks/current`
@@ -33,9 +33,9 @@ Use the HTTPS address of your own deployed instance. If you have only run locall
 
 3. Add **Get Dictionary Value**: key `message`, dictionary **Contents of URL**. If your iOS version does not recognize the response as a dictionary, insert **Get Dictionary from Input** before this action.
 4. Add **Show Notification** with the dictionary value as its text.
-5. Start a Spotify music track and run the Shortcut once. Allow access to the host and notifications when prompted. Confirm the saved position appears on the web page.
-6. Use the Shortcut's details/share menu to **Add to Home Screen**, or add it to a Shortcuts widget. After setup, one tap saves your place while Spotify keeps playing.
+5. Open music or a podcast episode, playing or paused, and run the Shortcut once. Allow access to the host and notifications when prompted. Confirm the saved position appears on the web page.
+6. Use the Shortcut's details/share menu to **Add to Home Screen**, or add it to a Shortcuts widget. After setup, one tap updates that album, playlist, or episode's place without changing the others.
 
-Resume from the album's **Resume** button in the Safari page. To choose a device explicitly, tap **Refresh devices** and select it under **Where to play**, then tap Resume. If the device is absent, open Spotify there and refresh again. An optional second Shortcut can use **Open URLs** with the bookmark page address.
+Resume from a saved place's **Resume** button in Safari. To choose a device explicitly, tap **Refresh devices** and select it under **Where to play**, then tap Resume. If absent, open Spotify there and refresh again. An optional second Shortcut can use **Open URLs** with the bookmark page address.
 
 This is a manual recipe for creating the Shortcut directly on the iPhone. No importable Apple-signed Shortcut file has been produced on this Windows computer. Do not share a Shortcut after adding its credential. The full [Shortcut guide](shortcut-setup.md) covers error responses, revocation, and network failures.
