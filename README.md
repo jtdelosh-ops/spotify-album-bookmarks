@@ -13,7 +13,7 @@ This is a personal app for **one Spotify account per deployment**. You host your
 - A flat, mobile-friendly shelf with independent bookmarks, optional names, saved times, and Resume/Delete actions.
 - An iPhone Shortcut to save current playback from the Home Screen or a widget.
 - Resume on your active Spotify player, or choose a computer, phone, or speaker under **Where to play**.
-- Album/playlist resume supplies the original context, saved track, and time together. Episode resume requests the saved episode at its saved time.
+- Resume supplies the original album/playlist or parent podcast show, the exact saved track/episode, and its time together. Podcast resume also checks the reported episode, device, playback status, and position before confirming success.
 - Private bookmarks stored in your own Cloudflare Worker and D1 database.
 
 **Saving is manual.** The app does not continuously track your listening or pause Spotify when you bookmark. It does not download or stream audio; playback stays in Spotify.
@@ -34,7 +34,9 @@ On save, the Worker reads Spotify's current playback state, including paused sta
 
 Source details are retained to resume the right audio: music records its album/playlist context and track, while podcasts record the episode. After adding a bookmark, use **Name** or **Rename** to give it an optional label of up to 120 characters. Renaming changes only the label, not its audio, timestamp, or place in the list. Clearing the label restores the automatic item/time title.
 
-For music, resume sends the album/playlist URI, track URI offset, and saved time together. Using the track URI supports multi-disc albums. For a podcast, it sends the episode URI and position. Spotify's published play reference documents track URIs rather than episode URIs in the `uris` list, so episode playback needs a check on your actual client; an accepted command alone is not proof of playback. [Playback API](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback).
+For music, resume sends the album/playlist URI, track URI offset, and saved time together. Using the track URI supports multi-disc albums. For podcasts, it sends the parent show URI as context, the exact episode URI as offset, and the saved time. Older episode bookmarks resolve their parent show from Spotify when resumed; their saved positions and names stay unchanged.
+
+The show-context method was verified on the original Windows desktop with two episodes from different shows. Spotify's [published playback reference](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback) does not explicitly document show contexts, so other clients still need a real playback check. The bare episode-URI method returned success on that desktop while clearing playback. The app now checks the actual podcast playback state and reports an error if it cannot confirm the episode at the saved position.
 
 Playlist names are fetched when Spotify permits it. If metadata is unavailable, the app keeps a previously known name or shows a stable label such as **Playlist abc123**. Saving the position does not require extra playlist permissions.
 
@@ -158,6 +160,7 @@ Never commit `.dev.vars`, `.env.production`, database exports, or populated Shor
 | --- | --- |
 | No active device, even though Spotify is open | **Refresh devices**, choose the intended device under **Where to play**, then Resume. If absent, open Spotify there and refresh. |
 | Nothing saves | Open a supported track or podcast episode using the connected account. Playing or paused is fine; Spotify must still report its position. |
+| Podcast playback is not confirmed | Open the saved episode in Spotify or choose another available device, then retry Resume. The app keeps the bookmark and does not skip through your queue. A timeout means playback could not be confirmed; check Spotify before retrying. |
 | Sign-in fails | Check the setup key, original owner account, app access, and exact callback. Both playback permissions are required. |
 | Reconnect requested | Authorize the same account again. Your bookmarks remain. |
 | Shortcut stopped after replacing its credential | Update the Authorization header. Include `Bearer` followed by one space and the new credential. |
@@ -188,6 +191,6 @@ TypeScript Worker, plain HTML/CSS/JavaScript, and D1 SQL. No frontend framework 
 | `tests/` | Application tests; not a substitute for real device checks |
 | `docs/` | Deployment, Shortcut instructions, security, and verification |
 
-See the [API reference](docs/api.md) for integration details and the [manual verification plan](docs/manual-test-plan.md) before a release. The original instance has completed sign-in, bookmark capture, and explicit desktop playback checks. A complete physical iPhone/device matrix has not been independently verified.
+See the [API reference](docs/api.md) for integration details and the [manual verification plan](docs/manual-test-plan.md) before a release. The original instance has completed sign-in, bookmark capture, and explicit desktop playback checks. The podcast fix has passed direct live checks of the actual playback function on Windows, including switching shows and resolving an older bookmark's show; this does not establish hosted save/resume integration. A complete physical iPhone/device matrix has not been independently verified.
 
 Pull requests and pushes to `main` run **Typecheck and build** in GitHub Actions. This checks compilation and Worker packaging; it does not run the application test suite, use Spotify credentials, or deploy to Cloudflare.

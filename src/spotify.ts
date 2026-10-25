@@ -166,7 +166,10 @@ export function bookmarkFromPlayback(data: any, account: string, now: number): B
   }
   return {
     account_id:account,bookmark_id:crypto.randomUUID(),label:'',context_type:kind,context_id:contextId,
-    context_uri:`spotify:${kind}:${contextId}`,context_name:contextName,image_url:image,creator_name:creator,
+    // Episodes keep their own identity, but desktop playback needs the parent show
+    // as context. Older saves without it are resolved from episode metadata later.
+    context_uri:episode && id(item.show?.id) ? `spotify:show:${item.show.id}` : `spotify:${kind}:${contextId}`,
+    context_name:contextName,image_url:image,creator_name:creator,
     item_id:item.id,item_uri:`spotify:${episode ? 'episode' : 'track'}:${item.id}`,item_name:item.name,
     disc_number:track && Number.isInteger(item.disc_number) ? item.disc_number : null,
     track_number:track && Number.isInteger(item.track_number) ? item.track_number : null,
@@ -174,7 +177,35 @@ export function bookmarkFromPlayback(data: any, account: string, now: number): B
   };
 }
 export function resumeBody(bookmark: Bookmark): object {
-  return bookmark.context_type === 'episode'
-    ? {uris:[bookmark.item_uri],position_ms:bookmark.progress_ms}
-    : {context_uri:bookmark.context_uri,offset:{uri:bookmark.item_uri},position_ms:bookmark.progress_ms};
+  if (bookmark.context_type === 'episode' && !/^spotify:show:[A-Za-z0-9]{22}$/.test(bookmark.context_uri))
+    throw new AppError(409,'podcast_context','Spotify did not identify this episode’s show. Try again or open the episode in Spotify.');
+  return {context_uri:bookmark.context_uri,offset:{uri:bookmark.item_uri},position_ms:bookmark.progress_ms};
+}
+
+export async function resumeBookmark(env: Env, fetcher: Fetch, bookmark: Bookmark, deviceId: string): Promise<void> {
+  let playable = bookmark;
+  if (bookmark.context_type === 'episode' && !/^spotify:show:[A-Za-z0-9]{22}$/.test(bookmark.context_uri)) {
+    // Compatibility with existing episode saves; do not rewrite their names,
+    // capture dates or positions just to resolve the playback context.
+    const response = await spotify(env,fetcher,`/episodes/${encodeURIComponent(bookmark.item_id)}`);
+    const episode = await json(response);
+    if (episode?.id !== bookmark.item_id || episode?.type !== 'episode' || !id(episode.show?.id))
+      throw new AppError(502,'podcast_context','Spotify did not identify this episode’s show. Open the episode in Spotify and try again.');
+    playable = {...bookmark,context_uri:`spotify:show:${episode.show.id}`};
+  }
+  const started = Date.now();
+  await spotify(env,fetcher,`/me/player/play?device_id=${encodeURIComponent(deviceId)}`,{method:'PUT',body:JSON.stringify(resumeBody(playable))});
+  if (bookmark.context_type !== 'episode') return;
+  // A 204 only acknowledges the command. In particular, a bare episode URI can
+  // clear desktop playback while still returning success. Confirm the result.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await new Promise(resolve => setTimeout(resolve,500));
+    const response = await spotify(env,fetcher,'/me/player?additional_types=track,episode');
+    const state = response.status === 204 ? null : await json(response);
+    const delta = state?.progress_ms - bookmark.progress_ms;
+    if (state?.device?.id === deviceId && state?.is_playing === true && state?.item?.type === 'episode' &&
+        state.item.id === bookmark.item_id && Number.isInteger(state.progress_ms) &&
+        delta >= -1500 && delta <= Date.now()-started+5000) return;
+  }
+  throw new AppError(409,'podcast_resume_unconfirmed','Spotify did not confirm this episode playing at the saved position. Open the episode in Spotify or choose another device, then try Resume again.');
 }

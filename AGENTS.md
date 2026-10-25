@@ -17,3 +17,9 @@ Evidence: local Chromium reproductions on 20 October 2026 showed the original fo
 When a migration copies live bookmark rows into a replacement table, pause web/Shortcut saves and deletes, drain in-flight mutations, and keep the pause until the Worker using the new table is active. Compare IDs, tracks, positions, dates, and counts before activation; reconcile any intervening writes first. If writers cannot be paused, use a reviewed maintenance or reconciliation design.
 
 Evidence: `0002_listening_bookmarks.sql` copies once, while the old Worker continues writing `bookmarks`; a successful save after that copy would otherwise be missing or stale in `listening_bookmarks`. A controlled no-writes window preserves the copied state. A same-table additive column migration or an unrelated UI change does not trigger this cross-table-copy rule.
+
+# Podcast playback context
+
+For episode resume in `src/spotify.ts`, use the parent show context with an exact episode URI offset and saved position, then confirm the reported episode/device/playing state/position. Resolve the show from episode metadata for older saved episode URIs. Do not fall back to a bare `uris: [episode]` command or report success solely because Spotify returned 204.
+
+Evidence: live Windows checks on 25 October 2026 showed the bare episode URI returning 204 but clearing playback. Show context plus episode offset resumed two different shows at the requested times, including an older bookmark resolved through metadata. Album/playlist context playback remains valid; unrelated naming or UI changes do not require repeating this live check. Spotify's published play reference does not explicitly guarantee show-context support on every client.

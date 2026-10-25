@@ -27,6 +27,10 @@ Every new capture receives a random UUID `bookmark_id`; repeated saves of the sa
 
 List rows include `label`, `created_at`, `updated_at`, source context/item metadata, saved position/duration, and optional disc/track numbers. The owner account ID is omitted. `created_at` is the saved moment's capture date; renaming updates `updated_at` but never changes the position or list order. Labels are optional trimmed strings of at most 120 characters, with session/Origin/CSRF protection. Shortcut credentials cannot rename or otherwise mutate an existing bookmark.
 
+Podcast rows retain `context_type: "episode"` and the episode's `context_id` for identity and links. New rows with show metadata store the parent show's URI in `context_uri` for playback. Older rows with an episode URI resolve the show using Spotify's episode endpoint when resumed; no row rewrite or database migration is needed for this compatibility step.
+
+Podcast Resume sends the show context, exact episode offset, and position together, then makes up to four playback-state checks, spaced by 500 ms plus request latency. Success means Spotify reported the expected episode playing on the requested device at a position consistent with the saved time and elapsed request time. `409 podcast_resume_unconfirmed` means that confirmation was not obtained; playback may still change after the response. Album/playlist success acknowledges the playback request without this extra verification.
+
 ## Errors and Shortcuts
 
 Errors have the shape `{ "ok": false, "code": "…", "message": "…", "httpStatus": 409, "requestId": "…" }` with the appropriate HTTP status. The status varies by error. A rate-limit response may include `Retry-After`.

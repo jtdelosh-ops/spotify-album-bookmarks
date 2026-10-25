@@ -1,6 +1,6 @@
 import { AppError, type Env, type Fetch, type Session, type Bookmark } from './types.ts';
 import { hash, randomToken, encrypt, decrypt, equalSecret } from './crypto.ts';
-import { SCOPES, tokenExchange, storeAuthorization, spotify, spotifyFailure, bookmarkFromPlayback, playlistMetadata, resumeBody } from './spotify.ts';
+import { SCOPES, tokenExchange, storeAuthorization, spotify, spotifyFailure, bookmarkFromPlayback, playlistMetadata, resumeBookmark } from './spotify.ts';
 
 const minute = 60000;
 const day = 86400000;
@@ -205,8 +205,8 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
       if (!device?.id || device.is_active !== true) throw new AppError(409,'no_device','Spotify reports no active player. Refresh devices, choose where to play, then tap Resume again.');
     }
     if (device.is_restricted) throw new AppError(403,'restricted_device','This Spotify device cannot be controlled. Choose another device in Spotify.');
-    await spotify(env,fetcher,`/me/player/play?device_id=${encodeURIComponent(device.id)}`,{method:'PUT',body:JSON.stringify(resumeBody(bookmark))});
-    return json({ok:true,message:`Resume requested on ${typeof device.name === 'string' ? device.name : 'your Spotify device'}.`});
+    await resumeBookmark(env,fetcher,bookmark,device.id);
+    return json({ok:true,message:`${bookmark.context_type === 'episode' ? 'Playback confirmed' : 'Resume requested'} on ${typeof device.name === 'string' ? device.name : 'your Spotify device'}.`});
   }
   if (path === '/api/shortcut-credentials') {
     if (request.method === 'GET') {
