@@ -19,10 +19,11 @@ export interface Session {
   token_hash: string; account_id: string; csrf_token: string; expires_at: number;
 }
 export interface Bookmark {
-  account_id: string; album_id: string; album_name: string; album_uri: string;
-  album_art_url: string | null; artist_name: string; track_id: string; track_uri: string;
-  track_name: string; disc_number: number; track_number: number;
-  progress_ms: number; duration_ms: number; updated_at: number;
+  account_id: string; bookmark_id: string; label: string;
+  context_type: 'album' | 'playlist' | 'episode'; context_id: string; context_uri: string; context_name: string;
+  image_url: string | null; creator_name: string; item_id: string; item_uri: string; item_name: string;
+  disc_number: number | null; track_number: number | null;
+  progress_ms: number; duration_ms: number; created_at: number; updated_at: number;
 }
 
 export class AppError extends Error {

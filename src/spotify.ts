@@ -121,24 +121,91 @@ export async function spotify(env: Env, fetcher: Fetch, path: string, init: Requ
 }
 
 const id = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9]{22}$/.test(value);
+export function spotifyImage(images: any): string | null {
+  return Array.isArray(images) ? images.find((i: any) => typeof i?.url === 'string' && /^https:\/\/i\.scdn\.co\//.test(i.url))?.url ?? null : null;
+}
+// Display metadata is optional: private/unavailable playlists can still be saved
+// from their playback context without requesting additional Spotify permissions.
+export async function playlistMetadata(env: Env, fetcher: Fetch, playlistId: string): Promise<{name:string;image:string|null} | null> {
+  try {
+    const response = await spotify(env,fetcher,`/playlists/${playlistId}?fields=name,images`);
+    const data = await response.json() as any;
+    return data && typeof data.name === 'string' && data.name ? {name:data.name,image:spotifyImage(data.images)} : null;
+  } catch (error) {
+    if (error instanceof AppError) return null;
+    // A malformed metadata response must not discard an otherwise valid position.
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
 export function bookmarkFromPlayback(data: any, account: string, now: number): Bookmark {
-  if (!data || data.is_playing !== true) throw new AppError(409, 'nothing_playing', 'Play a music track in Spotify, then bookmark it. Paused tracks are not saved.');
-  const track = data.item, album = track?.album;
-  if (data.currently_playing_type !== 'track' || track?.type !== 'track' || track.is_local || !id(track.id) || !id(album?.id))
-    throw new AppError(422, 'unsupported_item', 'Only Spotify music tracks with an album can be bookmarked. Local files, ads, episodes, and audiobooks are not supported.');
-  if (!Number.isInteger(data.progress_ms) || data.progress_ms < 0 || !Number.isInteger(track.duration_ms) || track.duration_ms <= 0)
+  if (!data || typeof data.is_playing !== 'boolean') throw new AppError(409, 'nothing_playing', 'Open a track or podcast episode in Spotify, playing or paused, then bookmark it. Spotify is not reporting a playback position.');
+  const item = data.item;
+  const episode = data.currently_playing_type === 'episode' && item?.type === 'episode';
+  const track = data.currently_playing_type === 'track' && item?.type === 'track';
+  if ((!episode && !track) || item?.is_local || !id(item?.id) || (episode && item?.show?.type === 'audiobook'))
+    throw new AppError(422, 'unsupported_item', 'Save a Spotify music track or podcast episode. Local files, ads, and audiobook chapters are not supported.');
+  if (!Number.isInteger(data.progress_ms) || data.progress_ms < 0 || !Number.isInteger(item.duration_ms) || item.duration_ms <= 0)
     throw new AppError(409, 'missing_position', 'Spotify did not provide a usable playback position. Try again.');
-  if (typeof track.name !== 'string' || typeof album.name !== 'string') throw new AppError(502, 'spotify_response', 'Spotify returned incomplete track information. Try again.');
-  const image = album.images?.find((i: any) => typeof i?.url === 'string' && /^https:\/\/i\.scdn\.co\//.test(i.url))?.url ?? null;
+  if (typeof item.name !== 'string' || !item.name) throw new AppError(502, 'spotify_response', 'Spotify returned incomplete item information. Try again.');
+  let kind: Bookmark['context_type'], contextId: string, contextName: string, creator: string, image: string | null;
+  if (episode) {
+    kind = 'episode'; contextId = item.id; contextName = item.name;
+    creator = typeof item.show?.name === 'string' ? item.show.name : 'Podcast';
+    image = spotifyImage(item.images) ?? spotifyImage(item.show?.images);
+  } else {
+    const album = item.album;
+    if (!id(album?.id) || typeof album.name !== 'string' || !album.name) throw new AppError(502, 'spotify_response', 'Spotify returned incomplete album information. Try again.');
+    const playlist = data.context?.type === 'playlist';
+    const playlistId = playlist ? /^spotify:playlist:([A-Za-z0-9]{22})$/.exec(data.context?.uri ?? '')?.[1] : undefined;
+    if (playlist && !playlistId) throw new AppError(409, 'missing_context', 'Spotify did not identify this playlist. Open it in Spotify and try again.');
+    kind = playlist ? 'playlist' : 'album'; contextId = playlistId ?? album.id;
+    contextName = playlist ? `Playlist ${contextId.slice(-6)}` : album.name;
+    creator = Array.isArray(item.artists) ? item.artists.map((a: any) => typeof a?.name === 'string' ? a.name : '').filter(Boolean).join(', ') : '';
+    image = spotifyImage(album.images);
+  }
   return {
-    account_id:account,album_id:album.id,album_name:album.name,album_uri:`spotify:album:${album.id}`,
-    album_art_url:image,artist_name:(track.artists ?? []).map((a: any) => typeof a.name === 'string' ? a.name : '').filter(Boolean).join(', '),
-    track_id:track.id,track_uri:`spotify:track:${track.id}`,track_name:track.name,
-    disc_number:Number.isInteger(track.disc_number) ? track.disc_number : 1,
-    track_number:Number.isInteger(track.track_number) ? track.track_number : 1,
-    progress_ms:Math.min(data.progress_ms,track.duration_ms-1),duration_ms:track.duration_ms,updated_at:now
+    account_id:account,bookmark_id:crypto.randomUUID(),label:'',context_type:kind,context_id:contextId,
+    // Episodes keep their own identity, but desktop playback needs the parent show
+    // as context. Older saves without it are resolved from episode metadata later.
+    context_uri:episode && id(item.show?.id) ? `spotify:show:${item.show.id}` : `spotify:${kind}:${contextId}`,
+    context_name:contextName,image_url:image,creator_name:creator,
+    item_id:item.id,item_uri:`spotify:${episode ? 'episode' : 'track'}:${item.id}`,item_name:item.name,
+    disc_number:track && Number.isInteger(item.disc_number) ? item.disc_number : null,
+    track_number:track && Number.isInteger(item.track_number) ? item.track_number : null,
+    progress_ms:Math.min(data.progress_ms,item.duration_ms-1),duration_ms:item.duration_ms,created_at:now,updated_at:now
   };
 }
 export function resumeBody(bookmark: Bookmark): object {
-  return {context_uri:bookmark.album_uri,offset:{uri:bookmark.track_uri},position_ms:bookmark.progress_ms};
+  if (bookmark.context_type === 'episode' && !/^spotify:show:[A-Za-z0-9]{22}$/.test(bookmark.context_uri))
+    throw new AppError(409,'podcast_context','Spotify did not identify this episode’s show. Try again or open the episode in Spotify.');
+  return {context_uri:bookmark.context_uri,offset:{uri:bookmark.item_uri},position_ms:bookmark.progress_ms};
+}
+
+export async function resumeBookmark(env: Env, fetcher: Fetch, bookmark: Bookmark, deviceId: string): Promise<void> {
+  let playable = bookmark;
+  if (bookmark.context_type === 'episode' && !/^spotify:show:[A-Za-z0-9]{22}$/.test(bookmark.context_uri)) {
+    // Compatibility with existing episode saves; do not rewrite their names,
+    // capture dates or positions just to resolve the playback context.
+    const response = await spotify(env,fetcher,`/episodes/${encodeURIComponent(bookmark.item_id)}`);
+    const episode = await json(response);
+    if (episode?.id !== bookmark.item_id || episode?.type !== 'episode' || !id(episode.show?.id))
+      throw new AppError(502,'podcast_context','Spotify did not identify this episode’s show. Open the episode in Spotify and try again.');
+    playable = {...bookmark,context_uri:`spotify:show:${episode.show.id}`};
+  }
+  const started = Date.now();
+  await spotify(env,fetcher,`/me/player/play?device_id=${encodeURIComponent(deviceId)}`,{method:'PUT',body:JSON.stringify(resumeBody(playable))});
+  if (bookmark.context_type !== 'episode') return;
+  // A 204 only acknowledges the command. In particular, a bare episode URI can
+  // clear desktop playback while still returning success. Confirm the result.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await new Promise(resolve => setTimeout(resolve,500));
+    const response = await spotify(env,fetcher,'/me/player?additional_types=track,episode');
+    const state = response.status === 204 ? null : await json(response);
+    const delta = state?.progress_ms - bookmark.progress_ms;
+    if (state?.device?.id === deviceId && state?.is_playing === true && state?.item?.type === 'episode' &&
+        state.item.id === bookmark.item_id && Number.isInteger(state.progress_ms) &&
+        delta >= -1500 && delta <= Date.now()-started+5000) return;
+  }
+  throw new AppError(409,'podcast_resume_unconfirmed','Spotify did not confirm this episode playing at the saved position. Open the episode in Spotify or choose another device, then try Resume again.');
 }

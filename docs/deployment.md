@@ -54,6 +54,22 @@ Pull the intended changes, install locked dependencies with `npm ci`, review any
 
 An update to Worker code does not automatically apply D1 migrations. For schema changes, back up first, review compatibility, and explicitly apply the intended migrations with the production config.
 
+`0004_shortcut_update_access.sql` adds an `allow_updates` flag with a default of zero for legacy API clients. Existing credentials remain add-only; no credential rotation or permission expansion happens during migration. This additive migration does not copy bookmark tables or require a bookmark write pause. The website's credential/checkbox section has since been removed. Legacy clients can still use the authenticated credential API with an explicit `allowUpdates` option. The normal browser flow needs no Shortcut credential. Updating a bookmark changes only the active `saved_bookmarks` row; recovery tables remain historical copies.
+
+### Upgrade to independent save points
+
+This upgrade needs a short, controlled pause in bookmark changes:
+
+1. Stop web and Shortcut saves and bookmark deletions, and let any in-flight requests finish. Keep this pause in place until the new Worker version is active. Spotify listening itself can continue. This is an operator-controlled window; the migration does not block the old Worker from accepting writes.
+2. Export a private backup. Record the legacy bookmark IDs, positions, and dates for comparison.
+3. Apply pending migrations using the remote command above. `0002_listening_bookmarks.sql` copies existing album rows to the intermediate `listening_bookmarks` table. `0003_independent_saves.sql` copies each row to its own slot in `saved_bookmarks`, retaining its ID, track, position, and capture date. New captures use random IDs and never replace existing rows. Credentials, sessions, and Shortcut credentials are unchanged. If `0002` was applied earlier while the old Worker continued accepting writes, reconcile that staged table with the current legacy source under this no-writes window before applying `0003`.
+4. Verify copied IDs, tracks, positions, dates, and counts. Confirm the legacy data has not changed since the copy. If a save or deletion occurred in the window, stop the release and reconcile the staged copy with the latest legacy data, including deletions, under a fresh no-writes window before switching versions. Counts alone cannot detect a changed position. Do not simply rerun the migration file or clear an active new table.
+5. Deploy the reviewed code/assets and confirm the new Worker version is active. Then resume web/Shortcut use and reload open bookmark pages.
+
+The new app reads/writes `saved_bookmarks`. Earlier tables are retained for recovery. Deleting a migrated slot also removes its corresponding recovery rows; deleting a newly added slot leaves other slots and recovery copies belonging to the migrated slot alone. If a controlled no-writes window cannot be maintained, postpone this release and use an explicitly reviewed maintenance or reconciliation mechanism.
+
+Rolling back code alone would show the original table, which does not contain later saves; it is not a full rollback of listening progress. Recover using an appropriate backup/data migration. Never rerun the initial bookmark import on an upgrade.
+
 For a custom domain, configure that exact domain in Cloudflare, verify it routes to this Worker, and set `APP_ORIGIN` to it before testing OAuth. The default workers.dev address must exactly match its configured origin if used.
 
 ## Verify after publishing
@@ -82,9 +98,9 @@ Restore into a **new empty approved D1 database**, never over a populated one. I
 ## Lost-key or token compromise recovery
 
 1. Revoke the app's access in Spotify account settings if Spotify tokens may be compromised. Revoke the Shortcut credential if only the Shortcut leaked.
-2. Back up retained bookmarks if needed. In an approved D1 operation, delete `spotify_credentials`, `oauth_states`, `sessions`, and `shortcut_credentials`; retain `owner` and `bookmarks` for the same account.
+2. Back up retained bookmarks if needed. In an approved D1 operation, delete `spotify_credentials`, `oauth_states`, `sessions`, and `shortcut_credentials`; retain `owner` and all bookmark tables for the same account.
 3. Replace the encryption key and/or setup key as appropriate. Update the deployed Worker secrets with approval.
-4. Sign in as the same owner and create a new Shortcut credential. Test save/resume again. Lost ciphertext keys cannot be recovered by resetting the key alone.
+4. Sign in as the same owner and test save/resume again. If you maintain legacy API clients, provision their replacement credentials through the authenticated API. Lost ciphertext keys cannot be recovered by resetting the key alone.
 
 ## Rollback
 

@@ -20,6 +20,9 @@ const token = (extra = {}) => ({access_token:'access-1',refresh_token:'refresh-1
 function database() {
   const db = new DatabaseSync(':memory:');
   db.exec(readFileSync(new URL('../migrations/0001_initial.sql',import.meta.url),'utf8'));
+  db.exec(readFileSync(new URL('../migrations/0002_listening_bookmarks.sql',import.meta.url),'utf8'));
+  db.exec(readFileSync(new URL('../migrations/0003_independent_saves.sql',import.meta.url),'utf8'));
+  db.exec(readFileSync(new URL('../migrations/0004_shortcut_update_access.sql',import.meta.url),'utf8'));
   class Statement {
     sql: string; values: any[] = [];
     constructor(sql: string) { this.sql = sql; }
@@ -40,7 +43,7 @@ function fixture() {
   let handler = async (url: string, init: any) => {
     if (url.endsWith('/api/token')) return Response.json(token());
     if (url.endsWith('/v1/me')) return Response.json({account_id:account,id:'mutable-id'});
-    if (url.endsWith('/me/player')) return Response.json(playback());
+    if (new URL(url).pathname.endsWith('/me/player')) return Response.json(playback());
     if (url.includes('/me/player/play?')) return new Response(null,{status:204});
     throw new Error(`Unexpected Spotify route: ${url}`);
   };
@@ -114,34 +117,37 @@ test('single owner cannot be replaced by a second authorized account',async () =
   assert.equal(r.status,403); assert.equal(f.db.raw.prepare('SELECT account_id FROM owner').get()!.account_id,account);
 });
 
-test('save upserts per album; resume preserves album and disc-two track URI and saved time; delete works',async () => {
+test('each save adds an independent bookmark; resume preserves album and disc-two track URI and saved time; delete targets one save',async () => {
   const f = fixture(); await f.login();
-  assert.equal((await f.request('/api/bookmarks/current',{method:'POST'})).status,200);
+  const firstSave = await f.request('/api/bookmarks/current',{method:'POST'}); assert.equal(firstSave.status,200);
+  const firstId = (await firstSave.json() as any).bookmarkId;
   f.setHandler(async url => {
-    if (url.endsWith('/me/player')) return Response.json({...playback(),progress_ms:234567});
+    if (new URL(url).pathname.endsWith('/me/player')) return Response.json({...playback(),progress_ms:234567});
     return new Response(null,{status:204});
   });
-  await f.request('/api/bookmarks/current',{method:'POST'});
+  const secondId = (await (await f.request('/api/bookmarks/current',{method:'POST'})).json() as any).bookmarkId;
   const list = await (await f.request('/api/bookmarks')).json() as any;
-  assert.equal(list.bookmarks.length,1); assert.equal(list.bookmarks[0].progress_ms,234567); assert.ok(!list.bookmarks[0].account_id);
-  const resume = await f.request(`/api/bookmarks/${album}/resume`,{method:'POST'}); assert.equal(resume.status,200);
+  assert.equal(list.bookmarks.length,2); assert.notEqual(firstId,secondId);
+  assert.equal(list.bookmarks.find((b: any) => b.bookmark_id === firstId).progress_ms,123456);
+  assert.equal(list.bookmarks.find((b: any) => b.bookmark_id === secondId).progress_ms,234567); assert.ok(!list.bookmarks[0].account_id);
+  const resume = await f.request(`/api/bookmarks/${secondId}/resume`,{method:'POST'}); assert.equal(resume.status,200);
   const play = f.calls.find(c => c.url.includes('/me/player/play?'))!;
   assert.deepEqual(JSON.parse(play.init.body),{context_uri:`spotify:album:${album}`,offset:{uri:`spotify:track:${track}`},position_ms:234567});
   assert.match(play.url,/device_id=active-device/);
-  assert.equal((await f.request(`/api/bookmarks/${album}`,{method:'DELETE'})).status,200);
-  assert.equal((await f.request(`/api/bookmarks/${album}/resume`,{method:'POST'})).status,404);
+  assert.equal((await f.request(`/api/bookmarks/${secondId}`,{method:'DELETE'})).status,200);
+  assert.equal((await f.request(`/api/bookmarks/${secondId}/resume`,{method:'POST'})).status,404);
 });
 
-test('no playback, paused music, local files, episodes and missing progress never overwrite a saved bookmark',async () => {
+test('no playback, local files, malformed episodes and missing progress never overwrite a saved bookmark; paused capture is supported',async () => {
   const f = fixture(); await f.login(); await f.request('/api/bookmarks/current',{method:'POST'});
-  const examples = [null,{...playback(),is_playing:false},{...playback(),item:{...playback().item,is_local:true}},
+  const examples = [null,{...playback(),item:{...playback().item,is_local:true}},
     {...playback(),currently_playing_type:'episode',item:{type:'episode'}},{...playback(),progress_ms:null}];
   for (const data of examples) {
     f.setHandler(async () => data ? Response.json(data) : new Response(null,{status:204}));
     const r = await f.request('/api/bookmarks/current',{method:'POST'}); assert.ok([409,422].includes(r.status));
   }
-  assert.equal(f.db.raw.prepare('SELECT progress_ms FROM bookmarks').get()!.progress_ms,123456);
-  assert.equal(bookmarkFromPlayback({...playback(),progress_ms:0},account,1).progress_ms,0);
+  assert.equal(f.db.raw.prepare('SELECT progress_ms FROM saved_bookmarks').get()!.progress_ms,123456);
+  assert.equal(bookmarkFromPlayback({...playback(),is_playing:false,progress_ms:0},account,1).progress_ms,0);
   assert.deepEqual(resumeBody(bookmarkFromPlayback(playback(),account,1)),{context_uri:`spotify:album:${album}`,offset:{uri:`spotify:track:${track}`},position_ms:123456});
 });
 
@@ -184,7 +190,7 @@ test('invalid_grant discards credentials, retains bookmarks, and requests reauth
   f.setHandler(async () => { attempts++; return Response.json({error:'invalid_grant'},{status:400}); });
   const r = await f.request('/api/bookmarks/current',{method:'POST'}); assert.equal(r.status,401); assert.equal(attempts,1);
   assert.equal(f.db.raw.prepare('SELECT count(*) AS n FROM spotify_credentials').get()!.n,0);
-  assert.equal(f.db.raw.prepare('SELECT count(*) AS n FROM bookmarks').get()!.n,1);
+  assert.equal(f.db.raw.prepare('SELECT count(*) AS n FROM saved_bookmarks').get()!.n,1);
   assert.equal((await (await f.request('/api/session')).json() as any).spotifyConnected,false);
 });
 
@@ -203,10 +209,11 @@ test('Spotify 401 refreshes once, 403/404 are actionable, 429 preserves Retry-Af
 });
 
 test('resume rejects unavailable and restricted devices before issuing a playback command',async () => {
-  const f = fixture(); await f.login(); await f.request('/api/bookmarks/current',{method:'POST'});
+  const f = fixture(); await f.login();
+  const bookmarkId = (await (await f.request('/api/bookmarks/current',{method:'POST'})).json() as any).bookmarkId;
   for (const data of [null,{...playback(),device:{id:'x',is_active:false}},{...playback(),device:{id:'x',is_active:true,is_restricted:true}}]) {
     f.setHandler(async () => data ? Response.json(data) : new Response(null,{status:204}));
-    const r = await f.request(`/api/bookmarks/${album}/resume`,{method:'POST'}); assert.ok([403,409].includes(r.status));
+    const r = await f.request(`/api/bookmarks/${bookmarkId}/resume`,{method:'POST'}); assert.ok([403,409].includes(r.status));
   }
   assert.equal(f.calls.filter(c => c.url.includes('/me/player/play?')).length,0);
 });
@@ -237,5 +244,5 @@ test('opt-in Shortcut notification responses carry errors in JSON without bypass
   const r = await f.request('/api/bookmarks/current',{method:'POST',headers:{'X-Shortcut-Response':'notification'}});
   assert.equal(r.status,200);
   const data = await r.json() as any; assert.equal(data.ok,false); assert.equal(data.httpStatus,401); assert.equal(data.code,'sign_in');
-  assert.equal(f.calls.length,0); assert.equal(f.db.raw.prepare('SELECT count(*) AS n FROM bookmarks').get()!.n,0);
+  assert.equal(f.calls.length,0); assert.equal(f.db.raw.prepare('SELECT count(*) AS n FROM saved_bookmarks').get()!.n,0);
 });

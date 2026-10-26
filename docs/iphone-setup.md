@@ -1,41 +1,32 @@
-# iPhone setup checklist
+# Use Spotify bookmarks on your iPhone
 
-Use the HTTPS address of your own deployed instance. If you have only run locally, complete the [deployment guide](deployment.md) first. Your phone cannot reach a computer's `127.0.0.1` address.
+Open your deployed HTTPS bookmark page in Safari or with your existing Home Screen shortcut. Your phone cannot reach a computer's `127.0.0.1` address. Sign in with the instance's setup key and original Spotify account if asked. The setup key is only for signing into this app.
 
-## Connect on your iPhone after deployment
+## Save or update while paused
 
-1. Add this exact additional redirect URI in your Spotify developer app settings:
+Leave Spotify at the position you want, playing or paused. On the bookmark page:
 
-   `https://YOUR_HOST/auth/spotify/callback`
+- **Add bookmark** keeps a separate new save.
+- **Update position → Update now** replaces the selected save's audio and position, keeping its name.
 
-   Replace `YOUR_HOST` with your deployed hostname. Keep the local callback registered if you also develop locally.
+Spotify must still report its item and position. A closed/offline player or an expired playback state may provide nothing to save; the app preserves earlier bookmarks instead of inventing a position.
 
-2. Open your HTTPS bookmark page in Safari on the iPhone.
-3. Enter the production **SETUP_KEY** from the private local `.env.production` file, then approve Spotify access using the same Spotify account. The production key is separate from the PC app's key. Keep the encryption key private; it is not used in the Shortcut.
-4. Expand **iPhone Shortcut & account**, tap **Create / replace Shortcut credential**, and copy the credential shown once. It is separate from your setup key and Spotify tokens.
+## Resume without playing something first
 
-## Build Bookmark current album in Shortcuts
+1. Under **Where to play**, choose **This iPhone**, then tap **Resume** on the saved bookmark.
+2. Spotify opens from that same tap. If iOS asks whether to open Spotify, allow it. There is no second in-app confirmation button.
+3. Keep Spotify visible while the saved audio starts at the bookmarked time. You do not need to press Play on another track first.
 
-1. Create a new Shortcut named **Bookmark current album**.
-2. Add **Get Contents of URL** and enter:
+Every bookmark has one **Resume** button. **This iPhone** is the default on iPhone and stays in the dropdown even when the phone disappears from Spotify Connect. The app uses the previously confirmed phone for up to 30 days. On first use, it looks for a single phone that becomes available after Spotify opens. If a phone is already listed and has not been remembered, choose it by name to resume directly. If several new phones appear, return and explicitly choose yours; it will not guess.
 
-   `https://YOUR_HOST/api/bookmarks/current`
+A paused phone can disappear from Spotify Connect when you switch back to Safari. The open-and-resume flow keeps the request running briefly while Spotify is in front. It uses up to five device checks, waits up to about 12 seconds for the phone, and bounds the full operation to about 22 seconds. A network failure or timeout means playback was not confirmed; check Spotify before retrying. If Spotify was reinstalled and its device ID changed, choose the phone again when it is available.
 
-   Expand its options, set **Method** to **POST**, and add these headers:
+On first use, discovery needs a device list fetched within the last minute. If it is missing or stale, the app refreshes the list and asks you to tap Resume again; it sends no playback command and does not open Spotify during that refresh. Returning to the page also refreshes the list. Once the phone has been confirmed, Resume uses its exact remembered ID.
 
-   | Header | Value |
-   | --- | --- |
-   | `Authorization` | `Bearer YOUR_SHORTCUT_CREDENTIAL` |
-   | `X-Shortcut-Response` | `notification` |
-   | `Content-Type` | `application/json` |
+## Other playback devices
 
-   Replace `YOUR_SHORTCUT_CREDENTIAL` with the copied value. Set **Request Body** to **JSON** with no fields.
+Available devices load when the page opens. For a speaker or computer, choose it under **Where to play** and tap the same **Resume** button. Use **Refresh devices** to update the list. A selected device that disappears stays marked unavailable, rather than switching to another player. **Active Spotify device** uses Spotify's current active player. Choosing another device can move your listening there. Spotify's **Everywhere** entry may be an Alexa multiroom group; its members are configured in Alexa.
 
-3. Add **Get Dictionary Value**: key `message`, dictionary **Contents of URL**. If your iOS version does not recognize the response as a dictionary, insert **Get Dictionary from Input** before this action.
-4. Add **Show Notification** with the dictionary value as its text.
-5. Start a Spotify music track and run the Shortcut once. Allow access to the host and notifications when prompted. Confirm the saved position appears on the web page.
-6. Use the Shortcut's details/share menu to **Add to Home Screen**, or add it to a Shortcuts widget. After setup, one tap saves your place while Spotify keeps playing.
+## Home Screen access
 
-Resume from the album's **Resume** button in the Safari page. To choose a device explicitly, tap **Refresh devices** and select it under **Where to play**, then tap Resume. If the device is absent, open Spotify there and refresh again. An optional second Shortcut can use **Open URLs** with the bookmark page address.
-
-This is a manual recipe for creating the Shortcut directly on the iPhone. No importable Apple-signed Shortcut file has been produced on this Windows computer. Do not share a Shortcut after adding its credential. The full [Shortcut guide](shortcut-setup.md) covers error responses, revocation, and network failures.
+Your existing shortcut that opens this page is sufficient. The app has no Shortcut-key setup section. If you need a launcher, use the [two-action Home Screen recipe](shortcut-setup.md).
