@@ -47,7 +47,11 @@ async function render() {
     info.append(source);
     const trackPosition = kind === 'album' && b.disc_number && b.track_number ? ` · Disc ${b.disc_number}, track ${b.track_number}` : '';
     info.append(element('p',`${time(b.progress_ms)} / ${time(b.duration_ms)}${trackPosition}`,'position'));
-    const saved = element('time',`Saved ${new Date(b.created_at).toLocaleString()}`); saved.dateTime = new Date(b.created_at).toISOString(); info.append(saved); card.append(info);
+    const saved = element('time',`Created ${new Date(b.created_at).toLocaleString()}`); saved.dateTime = new Date(b.created_at).toISOString(); info.append(saved);
+    if (b.updated_at !== b.created_at) {
+      const edited = element('time',`Edited ${new Date(b.updated_at).toLocaleString()}`); edited.dateTime = new Date(b.updated_at).toISOString(); info.append(element('br'),edited);
+    }
+    card.append(info);
     const actions = element('div',null,'actions');
     const resume = element('button','Resume','secondary'); resume.setAttribute('aria-label',`Resume ${bookmarkName}`);
     resume.onclick = () => action(async () => {
@@ -64,6 +68,16 @@ async function render() {
         } else throw error;
       }
     });
+    const update = element('button','Update position','quiet'); update.setAttribute('aria-label',`Update position for ${bookmarkName}`);
+    const updatePanel = element('div',null,'bookmark-update'); updatePanel.hidden = true;
+    updatePanel.append(element('p',`Replace the saved audio and position for “${bookmarkName}” with Spotify’s current playing or paused item? Your bookmark name stays the same.`));
+    const updateNow = element('button','Update now','secondary');
+    updateNow.setAttribute('aria-label',`Confirm update for ${bookmarkName}`);
+    const cancelUpdate = element('button','Cancel update','quiet');
+    const updateActions = element('div',null,'actions'); updateActions.append(updateNow,cancelUpdate); updatePanel.append(updateActions);
+    update.onclick = () => { updatePanel.hidden = false; updateNow.focus(); };
+    cancelUpdate.onclick = () => { updatePanel.hidden = true; update.focus(); };
+    updateNow.onclick = () => action(async () => { status('Updating bookmark…'); const r = await api(`/api/bookmarks/${encodeURIComponent(b.bookmark_id)}/update`,'POST'); await render(); status(r.message); });
     const rename = element('button',b.label ? 'Rename' : 'Name','quiet'); rename.setAttribute('aria-label',`Name bookmark ${bookmarkName}`);
     const nameForm = element('form',null,'bookmark-name'); nameForm.hidden = true;
     const nameLabel = element('label','Bookmark name (optional)');
@@ -83,19 +97,20 @@ async function render() {
     };
     const remove = element('button','Delete','quiet'); remove.setAttribute('aria-label',`Delete bookmark ${bookmarkName}`);
     remove.onclick = () => { if (confirm(`Delete bookmark “${bookmarkName}”?`)) action(async () => { const r = await api(`/api/bookmarks/${encodeURIComponent(b.bookmark_id)}`,'DELETE'); await render(); status(r.message); }); };
-    actions.append(resume,rename,remove); card.append(actions,nameForm); $('bookmarks').append(card);
+    actions.append(resume,update,rename,remove); card.append(actions,updatePanel,nameForm); $('bookmarks').append(card);
   }
 }
 async function credentialStatus() {
   const r = await api('/api/shortcut-credentials');
-  $('credential-status').textContent = r.credentials.length ? `An active credential was created ${new Date(r.credentials[0].created_at).toLocaleString()}.` : 'No active Shortcut credential.';
+  $('credential-status').textContent = r.credentials.length ? `Active credential: ${r.credentials[0].allow_updates === 1 ? 'add + update access' : 'add only'}, created ${new Date(r.credentials[0].created_at).toLocaleString()}.` : 'No active Shortcut credential.';
 }
 function hideCredential() { $('credential').value = ''; $('credential-box').hidden = true; }
 $('save').onclick = () => action(async () => { status('Adding bookmark…'); const r = await api('/api/bookmarks/current','POST'); await render(); status(r.message); });
 $('refresh-devices').onclick = () => action(async () => { const count = await refreshDevices(); status(count ? 'Choose where to play, then tap a saved place’s Resume button.' : 'No controllable devices are visible. Open Spotify, then refresh devices.'); });
 $('create-key').onclick = () => {
-  if (!confirm('Create a new credential? Any existing Shortcut credential will stop working.')) return;
-  action(async () => { const r = await api('/api/shortcut-credentials','POST'); $('credential').value = r.credential; $('credential-box').hidden = false; await credentialStatus(); status(r.message); });
+  const allowUpdates = $('allow-shortcut-updates').checked;
+  if (!confirm(`Create a new credential with ${allowUpdates ? 'access to add bookmarks, list bookmark names, and replace saved audio/positions' : 'add-only access'}? Any existing Shortcut credential will stop working.`)) return;
+  action(async () => { const r = await api('/api/shortcut-credentials','POST',{allowUpdates}); $('credential').value = r.credential; $('credential-box').hidden = false; await credentialStatus(); status(r.message); });
 };
 $('revoke-key').onclick = () => {
   if (confirm('Revoke your Shortcut credential? The Shortcut will stop saving bookmarks.')) action(async () => { const r = await api('/api/shortcut-credentials','DELETE'); hideCredential(); await credentialStatus(); status(r.message); });

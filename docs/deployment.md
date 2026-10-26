@@ -54,6 +54,8 @@ Pull the intended changes, install locked dependencies with `npm ci`, review any
 
 An update to Worker code does not automatically apply D1 migrations. For schema changes, back up first, review compatibility, and explicitly apply the intended migrations with the production config.
 
+`0004_shortcut_update_access.sql` adds an `allow_updates` flag with a default of zero. Apply it before deploying the add/update Shortcut code. Existing credentials remain add-only; no credential rotation or permission expansion happens during migration. This additive migration does not copy bookmark tables or require a bookmark write pause. Update access is granted only when the owner creates a replacement credential with the checkbox enabled. Updating a bookmark changes only the active `saved_bookmarks` row; recovery tables remain historical copies.
+
 ### Upgrade to independent save points
 
 This upgrade needs a short, controlled pause in bookmark changes:

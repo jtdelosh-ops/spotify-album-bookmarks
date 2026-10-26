@@ -2,16 +2,16 @@
 
 **Add a save point for any moment in your Spotify listening.**
 
-A small, self-hosted app for keeping independent save points, like video game saves, across music and podcasts. Tap **Add bookmark** or run your iPhone Shortcut while Spotify is playing or paused. Every save creates a new entry. Later, open your shelf and tap **Resume** on the one you want.
+A small, self-hosted app for keeping independent save points, like video game saves, across music and podcasts. **Add bookmark** creates a new entry; **Update position** replaces one selected save with your current playing or paused audio and time, keeping its name. Later, tap **Resume** on the save you want. Your iPhone Shortcut can offer the same add-or-update choice.
 
-For example: save **Before the gym** and **Evening listening** in the same album, plus a podcast at **23:45**. Add another bookmark whenever you like; previous saves stay unchanged. Each entry can have an optional name, and its own Resume and Delete actions.
+For example: create **Gym** and **Evening listening**, even in the same album, plus a podcast at **23:45**. Update **Gym** after your next session, or add a new save to keep both positions. Updates can replace the audio too: a slot is not tied to one album or episode. Each entry has its own Resume, Update position, Name/Rename, and Delete actions.
 
 This is a personal app for **one Spotify account per deployment**. You host your own copy and connect your own Spotify developer app. It is independent of Spotify.
 
 ## What you get
 
-- A flat, mobile-friendly shelf with independent bookmarks, optional names, saved times, and Resume/Delete actions.
-- An iPhone Shortcut to save current playback from the Home Screen or a widget.
+- A flat, mobile-friendly shelf with named bookmarks that you can add, update, resume, or delete individually.
+- An iPhone Shortcut to add a save or pick an existing bookmark to update from the Home Screen or a widget.
 - Resume on your active Spotify player, or choose a computer, phone, or speaker under **Where to play**.
 - Resume supplies the original album/playlist or parent podcast show, the exact saved track/episode, and its time together. Podcast resume also checks the reported episode, device, playback status, and position before confirming success.
 - Private bookmarks stored in your own Cloudflare Worker and D1 database.
@@ -30,7 +30,9 @@ flowchart LR
     C --> F[Your Spotify device]
 ```
 
-On save, the Worker reads Spotify's current playback state, including paused state, and gives the new bookmark a random ID. It never uses an album, playlist, or episode ID to decide whether to overwrite a save. Several bookmarks can point to the exact same item or moment.
+For **Add bookmark**, the Worker reads Spotify's current playback state, including paused state, and gives the new bookmark a random ID. It never uses an album, playlist, or episode ID to decide whether to overwrite a save. Several bookmarks can point to the exact same item or moment.
+
+**Update position** explicitly replaces the chosen slot's audio metadata and time, preserving its ID, name, creation date, and place in the list. Other saves are untouched. Invalid or unavailable playback leaves the existing save unchanged. The shelf shows creation and edit dates; edits include both name and position changes. There is no undo/history for a replaced position, so use Add bookmark when you want to keep the earlier one.
 
 Source details are retained to resume the right audio: music records its album/playlist context and track, while podcasts record the episode. After adding a bookmark, use **Name** or **Rename** to give it an optional label of up to 120 characters. Renaming changes only the label, not its audio, timestamp, or place in the list. Clearing the label restores the automatic item/time title.
 
@@ -133,12 +135,12 @@ After signing in to your hosted page:
 
 The [full Shortcut guide](docs/shortcut-setup.md) covers each action, examples, and revocation. This repository provides a manual recipe, not an importable `.shortcut` file.
 
-The Shortcut credential is separate from the setup key. It can **only add a bookmark for current playback**, not read, rename, delete, or overwrite existing saves, or control playback. Replacing it invalidates the old credential; update the Shortcut afterward. Do not share a Shortcut containing your credential.
+The Shortcut credential is separate from the setup key. Existing credentials keep **add-only access**. To build the add/update menu, check **Allow this new credential to list bookmark names and update existing bookmarks**, then create a replacement and update your Shortcut header. That optional access exposes a small choice list and can replace a selected slot's audio/position; it cannot rename, delete, resume, or read full bookmark records. Replacing a credential invalidates the old one. Follow the [add/update Shortcut recipe](docs/shortcut-setup.md#add-or-update-menu). Do not share a populated Shortcut.
 
 ## Behavior and limitations
 
 - **Playing and paused saves are supported.** Spotify must still report a supported track/episode and a valid position. Closed/offline devices may return no state. Missing data, local files, ads, and audiobook chapters are rejected without overwriting a bookmark.
-- **Every save adds an entry.** Repeated taps or Shortcut runs create separate bookmarks, even for the same item. There is no automatic replacement or progress tracking. Delete entries you no longer need.
+- **Add and update are separate actions.** Add creates another entry; Update position replaces only the selected save. Neither runs automatically. Basic Shortcuts still add new bookmarks; the optional menu lets you choose an existing save.
 - **Timing is approximate.** Capture uses Spotify's reported position; network and device delays affect capture and resume.
 - **Devices must be available to Spotify.** Explicit selection can target an available idle device, but cannot guarantee waking a closed app or reaching an offline device.
 - **Shuffle and repeat stay as you set them.** Shuffle can change which track follows the bookmarked one.

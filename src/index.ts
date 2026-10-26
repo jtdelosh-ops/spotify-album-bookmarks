@@ -4,6 +4,8 @@ import { SCOPES, tokenExchange, storeAuthorization, spotify, spotifyFailure, boo
 
 const minute = 60000;
 const day = 86400000;
+const bookmarkPattern = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume|\/update)?$/;
+function slotId(id: string): string { return /^[A-Za-z0-9]{22}$/.test(id) ? `album_${id}` : id; }
 function local(env: Env): boolean { return new URL(env.APP_ORIGIN).protocol === 'http:'; }
 function cookieName(env: Env, kind: string): string { return `${local(env) ? '' : '__Host-'}album_${kind}`; }
 function cookie(request: Request, name: string): string {
@@ -54,14 +56,52 @@ async function webSession(request: Request, env: Env): Promise<Session> {
   }
   return row;
 }
-async function bookmarkAccount(request: Request, env: Env): Promise<string> {
+async function shortcutGrant(request: Request, env: Env): Promise<{account_id:string;allow_updates:number}> {
   const authorization = request.headers.get('Authorization');
-  if (!authorization) return (await webSession(request,env)).account_id;
-  if (!/^Bearer [A-Za-z0-9_-]{43}$/.test(authorization)) throw new AppError(401,'shortcut_credential','Shortcut credential is invalid. Create a new credential on the bookmark page.');
-  const row = await env.DB.prepare(`SELECT account_id FROM shortcut_credentials WHERE token_hash=? AND revoked_at IS NULL
-    AND account_id=(SELECT account_id FROM owner WHERE singleton=1)`).bind(await hash(authorization.slice(7))).first<{account_id:string}>();
+  if (!authorization || !/^Bearer [A-Za-z0-9_-]{43}$/.test(authorization)) throw new AppError(401,'shortcut_credential','Shortcut credential is invalid. Create a new credential on the bookmark page.');
+  const row = await env.DB.prepare(`SELECT account_id,allow_updates FROM shortcut_credentials WHERE token_hash=? AND revoked_at IS NULL
+    AND account_id=(SELECT account_id FROM owner WHERE singleton=1)`).bind(await hash(authorization.slice(7))).first<{account_id:string;allow_updates:number}>();
   if (!row) throw new AppError(401,'shortcut_credential','Shortcut credential was revoked or is invalid. Create a new one on the bookmark page.');
-  return row.account_id;
+  return row;
+}
+async function bookmarkAccount(request: Request, env: Env): Promise<string> {
+  return request.headers.has('Authorization') ? (await shortcutGrant(request,env)).account_id : (await webSession(request,env)).account_id;
+}
+async function updateShortcutAccount(request: Request, env: Env): Promise<string> {
+  const grant = await shortcutGrant(request,env);
+  if (grant.allow_updates !== 1) throw new AppError(403,'shortcut_update_access','Create a replacement Shortcut credential with update access on the bookmark page.');
+  return grant.account_id;
+}
+
+async function captureCurrent(env: Env, fetcher: Fetch, account: string, now: number): Promise<Bookmark> {
+  const response = await spotify(env,fetcher,'/me/player?additional_types=track,episode');
+  const data = response.status === 204 ? null : await response.json();
+  const bookmark = bookmarkFromPlayback(data,account,now);
+  if (bookmark.context_type === 'playlist') {
+    const metadata = await playlistMetadata(env,fetcher,bookmark.context_id);
+    const previous = !metadata ? await env.DB.prepare(`SELECT context_name,image_url FROM saved_bookmarks
+      WHERE account_id=? AND context_type='playlist' AND context_id=? ORDER BY created_at DESC,bookmark_id LIMIT 1`)
+      .bind(account,bookmark.context_id).first<{context_name:string;image_url:string|null}>() : null;
+    bookmark.context_name = metadata?.name ?? previous?.context_name ?? bookmark.context_name;
+    bookmark.image_url = metadata?.image ?? previous?.image_url ?? bookmark.image_url;
+  }
+  return bookmark;
+}
+function position(ms: number): string { return `${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}`; }
+async function updateBookmark(env: Env, fetcher: Fetch, account: string, bookmarkId: string, now: number): Promise<Response> {
+  const existing = await env.DB.prepare('SELECT bookmark_id FROM saved_bookmarks WHERE account_id=? AND bookmark_id=?').bind(account,bookmarkId).first();
+  if (!existing) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
+  await rate(env,`save:${account}`,30);
+  const captured = await captureCurrent(env,fetcher,account,now);
+  // Only replace playback fields. A concurrent rename survives, and a deleted
+  // slot cannot be recreated by a slow Spotify response.
+  const {account_id,bookmark_id,label,created_at,updated_at,...playback} = captured;
+  const columns = Object.keys(playback);
+  const updated = await env.DB.prepare(`UPDATE saved_bookmarks SET ${columns.map(c=>`${c}=?`).join(',')},updated_at=MAX(updated_at,?)
+    WHERE account_id=? AND bookmark_id=? RETURNING bookmark_id`)
+    .bind(...Object.values(playback),Date.now(),account,bookmarkId).first();
+  if (!updated) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
+  return json({ok:true,bookmarkId,message:`Bookmark updated to ${captured.item_name} at ${position(captured.progress_ms)}. Its name is unchanged.`});
 }
 
 async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Response> {
@@ -119,25 +159,28 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
   if (path === '/api/bookmarks/current' && request.method === 'POST') {
     const account = await bookmarkAccount(request,env);
     await rate(env,`save:${account}`,30);
-    const response = await spotify(env,fetcher,'/me/player?additional_types=track,episode');
-    const data = response.status === 204 ? null : await response.json();
-    const bookmark = bookmarkFromPlayback(data,account,now);
-    if (bookmark.context_type === 'playlist') {
-      const metadata = await playlistMetadata(env,fetcher,bookmark.context_id);
-      const previous = !metadata ? await env.DB.prepare(`SELECT context_name,image_url FROM saved_bookmarks
-        WHERE account_id=? AND context_type='playlist' AND context_id=? ORDER BY created_at DESC,bookmark_id LIMIT 1`)
-        .bind(account,bookmark.context_id).first<{context_name:string;image_url:string|null}>() : null;
-      bookmark.context_name = metadata?.name ?? previous?.context_name ?? bookmark.context_name;
-      bookmark.image_url = metadata?.image ?? previous?.image_url ?? bookmark.image_url;
-    }
+    const bookmark = await captureCurrent(env,fetcher,account,now);
     const columns = Object.keys(bookmark);
     await env.DB.prepare(`INSERT INTO saved_bookmarks (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`)
       .bind(...Object.values(bookmark)).run();
-    const position = `${Math.floor(bookmark.progress_ms/60000)}:${String(Math.floor(bookmark.progress_ms/1000)%60).padStart(2,'0')}`;
-    return json({ok:true,bookmarkId:bookmark.bookmark_id,message:`Added bookmark for ${bookmark.item_name} at ${position}.`});
+    return json({ok:true,bookmarkId:bookmark.bookmark_id,message:`Added bookmark for ${bookmark.item_name} at ${position(bookmark.progress_ms)}.`});
   }
-  // A Shortcut credential grants only the save action, even if a browser session is also sent.
-  if (request.headers.has('Authorization')) throw new AppError(403,'shortcut_scope','Shortcut credentials can only bookmark the current track.');
+  const bookmarkRoute = bookmarkPattern.exec(path);
+  if (path === '/api/shortcut-bookmarks' && request.method === 'GET') {
+    const account = await updateShortcutAccount(request,env);
+    await rate(env,`shortcut-list:${account}`,30);
+    const result = await env.DB.prepare('SELECT bookmark_id,label,item_name,progress_ms FROM saved_bookmarks WHERE account_id=? ORDER BY created_at DESC,bookmark_id')
+      .bind(account).all<{bookmark_id:string;label:string;item_name:string;progress_ms:number}>();
+    const choices = Object.fromEntries(result.results.map((b,index)=>[
+      `${index+1}. ${b.label ? `${b.label} · ` : ''}${b.item_name} · ${position(b.progress_ms)}`,b.bookmark_id]));
+    return json({ok:true,choices});
+  }
+  // Bearer credentials have explicit capabilities, even alongside a valid cookie.
+  if (request.headers.has('Authorization')) {
+    if (bookmarkRoute?.[2] === '/update' && request.method === 'POST')
+      return updateBookmark(env,fetcher,await updateShortcutAccount(request,env),slotId(bookmarkRoute[1]),now);
+    throw new AppError(403,'shortcut_scope','Shortcut credentials can add bookmarks and, with update access, list choices and update a saved position.');
+  }
   const session = await webSession(request,env);
   await rate(env,`web:${session.account_id}`,60);
   if (path === '/api/session' && request.method === 'GET') {
@@ -156,10 +199,10 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
       .map((d: any) => ({id:d.id,name:typeof d.name === 'string' ? d.name : 'Spotify device',
         type:typeof d.type === 'string' ? d.type : '',isActive:d.is_active === true}))});
   }
-  const bookmarkRoute = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume)?$/.exec(path);
   if (bookmarkRoute && ((bookmarkRoute[2] && request.method === 'POST') || (!bookmarkRoute[2] && ['DELETE','PATCH'].includes(request.method)))) {
     // Bare album IDs from older open pages remain valid for migrated album rows.
-    const bookmarkId = /^[A-Za-z0-9]{22}$/.test(bookmarkRoute[1]) ? `album_${bookmarkRoute[1]}` : bookmarkRoute[1];
+    const bookmarkId = slotId(bookmarkRoute[1]);
+    if (bookmarkRoute[2] === '/update') return updateBookmark(env,fetcher,session.account_id,bookmarkId,now);
     const bookmark = await env.DB.prepare('SELECT * FROM saved_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId).first<Bookmark>();
     if (!bookmark) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
     if (request.method === 'PATCH') {
@@ -174,11 +217,13 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
       return json({ok:true,message:body.label.trim() ? 'Bookmark renamed.' : 'Bookmark name cleared.'});
     }
     if (request.method === 'DELETE') {
-      const migrated = bookmarkId === `${bookmark.context_type}_${bookmark.context_id}`;
+      // A migrated slot can now point to different audio after an update. Its
+      // original recovery rows are identified by the retained slot ID.
+      const migrated = /^(album|playlist|episode)_([A-Za-z0-9]{22})$/.exec(bookmarkId);
       await env.DB.batch([
         env.DB.prepare('DELETE FROM saved_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId),
         ...(migrated ? [env.DB.prepare('DELETE FROM listening_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId)] : []),
-        ...(migrated && bookmark.context_type === 'album' ? [env.DB.prepare('DELETE FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,bookmark.context_id)] : [])
+        ...(migrated?.[1] === 'album' ? [env.DB.prepare('DELETE FROM bookmarks WHERE account_id=? AND album_id=?').bind(session.account_id,migrated[2])] : [])
       ]);
       return json({ok:true,message:'Bookmark deleted.'});
     }
@@ -210,16 +255,25 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
   }
   if (path === '/api/shortcut-credentials') {
     if (request.method === 'GET') {
-      const result = await env.DB.prepare('SELECT credential_id,created_at FROM shortcut_credentials WHERE account_id=? AND revoked_at IS NULL').bind(session.account_id).all();
+      const result = await env.DB.prepare('SELECT credential_id,created_at,allow_updates FROM shortcut_credentials WHERE account_id=? AND revoked_at IS NULL').bind(session.account_id).all();
       return json({ok:true,credentials:result.results});
     }
     if (request.method === 'POST') {
+      const text = await limitedText(request);
+      let allowUpdates = false;
+      if (text) {
+        if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new AppError(415,'content_type','Send Shortcut access options as JSON.');
+        let body: any;
+        try { body = JSON.parse(text); } catch { throw new AppError(400,'shortcut_access','Choose whether the Shortcut can update bookmarks.'); }
+        if (!body || Array.isArray(body) || typeof body.allowUpdates !== 'boolean') throw new AppError(400,'shortcut_access','Choose whether the Shortcut can update bookmarks.');
+        allowUpdates = body.allowUpdates;
+      }
       const credential = randomToken(), credentialId = crypto.randomUUID();
       await env.DB.batch([
         env.DB.prepare('UPDATE shortcut_credentials SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL').bind(now,session.account_id),
-        env.DB.prepare('INSERT INTO shortcut_credentials (credential_id,token_hash,account_id,created_at) VALUES (?,?,?,?)').bind(credentialId,await hash(credential),session.account_id,now)
+        env.DB.prepare('INSERT INTO shortcut_credentials (credential_id,token_hash,account_id,created_at,allow_updates) VALUES (?,?,?,?,?)').bind(credentialId,await hash(credential),session.account_id,now,allowUpdates ? 1 : 0)
       ]);
-      return json({ok:true,credential,credentialId,message:'Copy this credential now. Creating it revoked all previous Shortcut credentials.'},201);
+      return json({ok:true,credential,credentialId,allowUpdates,message:'Copy this credential now. Creating it revoked all previous Shortcut credentials.'},201);
     }
     if (request.method === 'DELETE') {
       await env.DB.prepare('UPDATE shortcut_credentials SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL').bind(now,session.account_id).run();
@@ -262,8 +316,10 @@ export function createApp(fetcher: Fetch = fetch) {
         // Shortcuts can stop on non-2xx responses before reaching Show Notification.
         // Opt-in envelopes preserve the error in JSON while allowing that action to run.
         const httpStatus = known ? error.status : 500;
-        const notification = request.method === 'POST' && new URL(request.url).pathname === '/api/bookmarks/current'
-          && request.headers.get('X-Shortcut-Response') === 'notification';
+        const errorPath = new URL(request.url).pathname;
+        const shortcutAction = (request.method === 'POST' && (errorPath === '/api/bookmarks/current' || bookmarkPattern.exec(errorPath)?.[2] === '/update'))
+          || (request.method === 'GET' && errorPath === '/api/shortcut-bookmarks');
+        const notification = shortcutAction && request.headers.get('X-Shortcut-Response') === 'notification';
         const response = json({ok:false,code:known ? error.code : 'server_error',message:known ? error.message : 'The service is not ready. Check configuration or try again.',httpStatus,requestId},notification ? 200 : httpStatus);
         if (known && error.retryAfter) response.headers.set('Retry-After',String(error.retryAfter));
         return harden(response,requestId);

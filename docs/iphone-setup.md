@@ -38,4 +38,6 @@ Use the HTTPS address of your own deployed instance. If you have only run locall
 
 Resume from a saved place's **Resume** button in Safari. To choose a device explicitly, tap **Refresh devices** and select it under **Where to play**, then tap Resume. If absent, open Spotify there and refresh again. An optional second Shortcut can use **Open URLs** with the bookmark page address.
 
+To update instead of adding, Safari now has **Update position** on each bookmark. For an iPhone Shortcut with an **Add new / Update existing** menu, enable update access while creating a replacement credential, then follow the [menu recipe](shortcut-setup.md#add-or-update-menu). The existing basic Shortcut remains add-only until you change its credential and actions.
+
 This is a manual recipe for creating the Shortcut directly on the iPhone. No importable Apple-signed Shortcut file has been produced on this Windows computer. Do not share a Shortcut after adding its credential. The full [Shortcut guide](shortcut-setup.md) covers error responses, revocation, and network failures.
