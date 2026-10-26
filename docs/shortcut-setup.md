@@ -8,6 +8,6 @@ To create a simple launcher in Apple's Shortcuts app:
 2. Add **Open URLs** using that URL.
 3. Name it **Spotify bookmarks**, then choose **Add to Home Screen** from its details/share menu.
 
-The shortcut opens the website. On that page, use **Add bookmark**, **Update position**, and **Resume**. On iPhone, **Resume on this iPhone → Open Spotify & resume** opens Spotify and lets the app send the saved position while Spotify is in front. You do not need to play something else first.
+The shortcut opens the website. On that page, use **Add bookmark**, **Update position**, and **Resume**. On iPhone, choose **This iPhone** under **Where to play**, then **Resume → Open Spotify & resume** opens Spotify and lets the app send the saved position while Spotify is in front. You do not need to play something else first.
 
 Read the [iPhone guide](iphone-setup.md) for device selection and paused playback. Advanced legacy API endpoints remain documented in the [API reference](api.md), but the website no longer has a section for creating or copying Shortcut credentials.

@@ -2,7 +2,9 @@ const $ = id => document.getElementById(id);
 let csrf = '';
 let busy = false;
 const onIPhone = /iPhone|iPod/.test(navigator.userAgent);
+const thisPhone = 'this-iphone';
 let deviceSnapshot = [];
+let deviceSelectionVersion = 0;
 function rememberedPhone() {
   try {
     const p = JSON.parse(localStorage.getItem('spotify-bookmarks-phone'));
@@ -25,21 +27,34 @@ async function api(path, method = 'GET', body, keepalive = false) {
 async function action(task) {
   if (busy) return;
   busy = true;
-  document.querySelectorAll('button').forEach(b => b.disabled = true);
+  document.querySelectorAll('button, #playback-device').forEach(b => b.disabled = true);
   try { await task(); }
   catch (error) { status(error.message,true); if (['spotify_reconnect','invalid_grant','spotify_scopes'].includes(error.code)) $('signin').hidden = false; }
-  finally { busy = false; document.querySelectorAll('button').forEach(b => b.disabled = false); }
+  finally { busy = false; document.querySelectorAll('button, #playback-device').forEach(b => b.disabled = false); }
+}
+function clearPhonePreparation() {
+  deviceSelectionVersion++;
+  document.querySelectorAll('.bookmark-phone').forEach(panel=>panel.hidden=true);
+  status('');
 }
 function time(ms) { const s = Math.floor(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 function element(tag, text, cls) { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; }
 async function refreshDevices() {
-  const selected = $('playback-device').value;
   const r = await api('/api/devices');
+  let selected = $('playback-device').value;
+  const selectedLabel = $('playback-device').selectedOptions[0]?.textContent || 'Selected device';
   deviceSnapshot = r.devices;
-  const options = [new Option('Active Spotify device','')];
-  for (const d of r.devices) options.push(new Option(`${d.name}${d.isActive ? ' (active)' : ''}`,d.id));
+  const known = onIPhone ? rememberedPhone() : null;
+  if (known?.id === selected) selected = thisPhone;
+  const options = [...(onIPhone ? [new Option('This iPhone',thisPhone)] : []),new Option('Active Spotify device','')];
+  for (const d of r.devices) {
+    if (known?.id !== d.id) options.push(new Option(`${d.name}${d.isActive ? ' (active)' : ''}`,d.id));
+  }
+  // Keep an explicit target when it disappears; never silently switch to the
+  // active speaker/computer after refreshing the dropdown.
+  if (selected && !options.some(o=>o.value===selected)) options.push(new Option(`${selectedLabel.replace(/ \(unavailable\)$/,'')} (unavailable)`,selected));
   $('playback-device').replaceChildren(...options);
-  if (r.devices.some(d => d.id === selected)) $('playback-device').value = selected;
+  $('playback-device').value = selected;
   return r.devices.length;
 }
 async function render() {
@@ -67,7 +82,10 @@ async function render() {
     card.append(info);
     const actions = element('div',null,'actions');
     const resume = element('button','Resume','secondary'); resume.setAttribute('aria-label',`Resume ${bookmarkName}`);
+    let preparePhone;
     resume.onclick = () => action(async () => {
+      clearPhonePreparation();
+      if (onIPhone && $('playback-device').value===thisPhone) { await preparePhone(); return; }
       status('Requesting playback…');
       const deviceId = $('playback-device').value;
       try {
@@ -94,32 +112,27 @@ async function render() {
     const rename = element('button',b.label ? 'Rename' : 'Name','quiet'); rename.setAttribute('aria-label',`Name bookmark ${bookmarkName}`);
     const phonePanel = element('div',null,'bookmark-phone'); phonePanel.hidden = true;
     if (onIPhone) {
-      resume.textContent = 'Resume on selected device';resume.className='quiet';
-      resume.setAttribute('aria-label',`Resume ${bookmarkName} on the selected Spotify device`);
-      const phoneButton = element('button','Resume on this iPhone','secondary');
-      phoneButton.setAttribute('aria-label',`Resume ${bookmarkName} on this iPhone`);
       const phoneInfo = element('p');
       const launch = element('a','Open Spotify & resume','phone-launch');
       launch.href = `spotify:${b.context_type==='episode' ? 'episode' : 'track'}:${encodeURIComponent(b.item_id)}`;
       const cancelPhone = element('button','Cancel','quiet');
       const phoneActions = element('div',null,'actions'); phoneActions.append(launch,cancelPhone);phonePanel.append(phoneInfo,phoneActions);
       let prepared;
-      phoneButton.onclick = () => action(async()=>{
+      preparePhone = async()=>{
         await refreshDevices();
-        const selected = deviceSnapshot.find(d=>d.id===$('playback-device').value && d.type.toLowerCase()==='smartphone');
-        const known = selected || rememberedPhone();
+        const known = rememberedPhone();
         if (!known && deviceSnapshot.some(d=>d.type.toLowerCase()==='smartphone')) {
           phonePanel.hidden=true;
-          status('Choose your iPhone under Where to play once, then tap Resume on this iPhone again.');
+          status('Your phone is already available. Choose it by name under Where to play, then tap Resume.');
           $('playback-device').focus();return;
         }
-        prepared = {at:Date.now(),body:{seenDeviceIds:deviceSnapshot.map(d=>d.id),...(known ? {deviceId:known.id} : {})}};
+        prepared = {at:Date.now(),selectionVersion:deviceSelectionVersion,body:{seenDeviceIds:deviceSnapshot.map(d=>d.id),...(known ? {deviceId:known.id} : {})}};
         phoneInfo.textContent = `Tap Open Spotify & resume${known?.name ? ` for ${known.name}` : ''}, then keep Spotify on the screen while this bookmark starts. You do not need to press Play first.`;
         phonePanel.hidden=false;launch.focus();status('Ready. Tap Open Spotify & resume below your selected bookmark.');
-      });
+      };
       launch.onclick = event => {
-        if (busy || !prepared || Date.now()-prepared.at>60000) {
-          event.preventDefault();status('Tap Resume on this iPhone again to prepare a fresh request.');return;
+        if (busy || !prepared || Date.now()-prepared.at>60000 || prepared.selectionVersion!==deviceSelectionVersion || $('playback-device').value!==thisPhone) {
+          event.preventDefault();status('Choose This iPhone and tap Resume again to prepare a fresh request.');return;
         }
         const body = prepared.body;prepared=null;
         // Start the authenticated request before the link opens Spotify. Keepalive
@@ -130,8 +143,7 @@ async function render() {
           rememberPhone(r.phone);phonePanel.hidden=true;status(r.message);
         });
       };
-      cancelPhone.onclick = ()=>{prepared=null;phonePanel.hidden=true;phoneButton.focus();};
-      actions.append(phoneButton);
+      cancelPhone.onclick = ()=>{prepared=null;phonePanel.hidden=true;status('');resume.focus();};
     }
     const nameForm = element('form',null,'bookmark-name'); nameForm.hidden = true;
     const nameLabel = element('label','Bookmark name (optional)');
@@ -155,7 +167,8 @@ async function render() {
   }
 }
 $('save').onclick = () => action(async () => { status('Adding bookmark…'); const r = await api('/api/bookmarks/current','POST'); await render(); status(r.message); });
-$('refresh-devices').onclick = () => action(async () => { const count = await refreshDevices(); status(count ? 'Choose where to play, then tap a saved place’s Resume button.' : 'No controllable devices are visible. Open Spotify, then refresh devices.'); });
+$('refresh-devices').onclick = () => action(async () => { clearPhonePreparation(); const count = await refreshDevices(); status(count ? 'Choose where to play, then tap Resume.' : onIPhone ? 'Choose This iPhone and tap Resume to open Spotify, or refresh after opening Spotify on another device.' : 'No controllable devices are visible. Open Spotify, then refresh devices.'); });
+$('playback-device').onchange = clearPhonePreparation;
 $('reconnect').onclick = () => { $('signin').hidden = false; $('setup-key').focus(); };
 $('logout').onclick = () => action(async () => { await api('/api/logout','POST'); location.reload(); });
 $('disconnect').onclick = () => {
@@ -163,11 +176,13 @@ $('disconnect').onclick = () => {
 };
 async function init() {
   $('phone-resume-help').hidden = !onIPhone;
+  if (onIPhone) { $('playback-device').prepend(new Option('This iPhone',thisPhone)); $('playback-device').value=thisPhone; }
   try {
     const session = await api('/api/session'); csrf = session.csrf;
     $('library').hidden = false; $('signin').hidden = session.spotifyConnected;
     if (!session.spotifyConnected) status('Spotify needs to be reconnected. Your bookmarks are still here.',true);
     await render();
+    try { await refreshDevices(); } catch (error) { status(error.message,true); }
   } catch (error) { $('signin').hidden = false; if (error.code !== 'sign_in') status(error.message,true); }
 }
 init();

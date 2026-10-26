@@ -232,11 +232,11 @@ async function routes(request: Request, env: Env, fetcher: Fetch, context?: Pick
     if (bookmarkRoute[2] === '/resume-on-phone') {
       let body: any;
       try { body = JSON.parse(await limitedText(request)); }
-      catch (error) { if(error instanceof AppError) throw error; throw new AppError(400,'phone_request','Refresh devices, then tap Resume on this iPhone again.'); }
+      catch (error) { if(error instanceof AppError) throw error; throw new AppError(400,'phone_request','Refresh devices, then choose This iPhone and tap Resume again.'); }
       if (!body || !Array.isArray(body.seenDeviceIds) || body.seenDeviceIds.length>100 ||
           !body.seenDeviceIds.every((id: any)=>typeof id==='string' && id.length>0 && id.length<=256) ||
           (body.deviceId!==undefined && (typeof body.deviceId!=='string' || !body.deviceId || body.deviceId.length>256)))
-        throw new AppError(400,'phone_request','Refresh devices, then tap Resume on this iPhone again.');
+        throw new AppError(400,'phone_request','Refresh devices, then choose This iPhone and tap Resume again.');
       const task = resumeOnPhone(env,fetcher,bookmark,{deviceId:body.deviceId,seenDeviceIds:body.seenDeviceIds});
       // Keep the bounded operation alive if Safari backgrounds/disconnects when
       // the user opens Spotify. Rejections still reach the normal JSON handler.

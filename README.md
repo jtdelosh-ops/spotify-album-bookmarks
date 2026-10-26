@@ -119,10 +119,10 @@ The guide also covers updates, backups, and key recovery.
 ## Resume on your iPhone without pressing Play first
 
 1. Open the HTTPS bookmark page using your existing Home Screen shortcut or Safari.
-2. On a saved bookmark, tap **Resume on this iPhone**.
+2. On a saved bookmark, choose **This iPhone** under **Where to play**, then tap **Resume**.
 3. Tap **Open Spotify & resume** and allow Spotify to open. Keep Spotify on the screen while the app starts the saved audio at its bookmarked position.
 
-If your iPhone is already listed under **Where to play**, select it once before step 2. The app remembers the successfully used phone in that browser for up to 30 days. If no phone is listed on first use, it waits for one new phone to appear after Spotify opens. It refuses to choose between multiple new phones. No extra save Shortcut or private Shortcut key is needed.
+Each bookmark has one **Resume** button. **This iPhone** is the default choice on iPhone and stays in the dropdown when Spotify hides an idle phone. The app remembers the successfully used phone in that browser for up to 30 days. On first use, it waits for one new phone to appear after Spotify opens. If a phone is already listed and has not been remembered, select it by name to resume directly. It refuses to choose between multiple new phones. Select **Active Spotify device** or a listed speaker/computer for ordinary remote playback. Refreshing keeps a selected device even if it becomes unavailable, so it cannot silently switch playback elsewhere. No extra Shortcut key is needed.
 
 Why two steps? A paused iPhone can disappear from Spotify Connect when Spotify moves to the background. Opening Spotify makes the phone reachable; the Worker sends the bookmarked audio and time while Spotify is in front. The phone flow checks actual playback before confirming success. It is a short, user-triggered operation, not continuous background monitoring. Slow networks, a closed/uninstalled Spotify app, or a changed device ID can still prevent confirmation; check Spotify before retrying.
 
