@@ -2,7 +2,7 @@
 
 **Add a save point for any moment in your Spotify listening.**
 
-A small, self-hosted app for keeping independent save points, like video game saves, across music and podcasts. **Add bookmark** creates a new entry; **Update position** replaces one selected save with your current playing or paused audio and time, keeping its name. Later, tap **Resume** on the save you want. On iPhone, the app can open Spotify and resume the chosen save without first playing unrelated audio.
+A small, self-hosted app for keeping independent save points, like video game saves, across music and podcasts. **Add bookmark** creates a new entry; **Update position** replaces one selected save with your current playing or paused audio and time, keeping its name. Choose a device under **Where to play**, then tap the bookmark's **Resume** button. On iPhone, choosing **This iPhone** lets that same tap open Spotify and resume the saved position.
 
 For example: create **Gym** and **Evening listening**, even in the same album, plus a podcast at **23:45**. Update **Gym** after your next session, or add a new save to keep both positions. Updates can replace the audio too: a slot is not tied to one album or episode. Each entry has its own Resume, Update position, Name/Rename, and Delete actions.
 
@@ -13,10 +13,25 @@ This is a personal app for **one Spotify account per deployment**. You host your
 - A flat, mobile-friendly shelf with named bookmarks that you can add, update, resume, or delete individually.
 - Open the page with your existing Home Screen shortcut; add, update, and resume directly in the app.
 - Resume on your active Spotify player, or choose a computer, phone, or speaker under **Where to play**.
+- One-tap iPhone resume: **This iPhone → Resume** opens Spotify directly. No second in-app confirmation button or separate API Shortcut is needed.
 - Resume supplies the original album/playlist or parent podcast show, the exact saved track/episode, and its time together. Podcast resume also checks the reported episode, device, playback status, and position before confirming success.
 - Private bookmarks stored in your own Cloudflare Worker and D1 database.
 
 **Saving is manual.** The app does not continuously track your listening or pause Spotify when you bookmark. It does not download or stream audio; playback stays in Spotify.
+
+## Everyday use
+
+After connecting your Spotify account:
+
+| What you want to do | Use |
+| --- | --- |
+| Keep a new moment | **Add bookmark** while the music or podcast is playing or paused |
+| Move an existing save to your current position | That bookmark's **Update position → Update now**; its name stays the same |
+| Give a save a useful label | **Name** or **Rename**, such as Gym or Evening listening |
+| Return to a save | Choose a device under **Where to play**, then tap **Resume** on that bookmark |
+| Resume on the iPhone you're using | Choose **This iPhone**, tap **Resume**, and keep Spotify visible while playback starts |
+
+You can keep several saves in the same album, playlist, or episode. Use **Add bookmark** when you want to preserve an older position; updating replaces it and has no undo. Saving or updating does not start playback. Spotify must still report the item and position, even when paused.
 
 ## How it works
 
@@ -119,14 +134,14 @@ The guide also covers updates, backups, and key recovery.
 ## Resume on your iPhone without pressing Play first
 
 1. Open the HTTPS bookmark page using your existing Home Screen shortcut or Safari.
-2. On a saved bookmark, choose **This iPhone** under **Where to play**, then tap **Resume**.
+2. Choose **This iPhone** under **Where to play**, then tap **Resume** on the saved bookmark.
 3. Spotify opens from that same tap. Allow the iOS open-app prompt if shown, and keep Spotify on the screen while the saved audio starts at its bookmarked position.
 
 Each bookmark has one **Resume** button. **This iPhone** is the default choice on iPhone and stays in the dropdown when Spotify hides an idle phone. The app remembers the successfully used phone in that browser for up to 30 days. On first use, it waits for one new phone to appear after Spotify opens. If a phone is already listed and has not been remembered, select it by name to resume directly. It refuses to choose between multiple new phones. Select **Active Spotify device** or a listed speaker/computer for ordinary remote playback. Refreshing keeps a selected device even if it becomes unavailable, so it cannot silently switch playback elsewhere. No extra Shortcut key is needed.
 
 A paused iPhone can disappear from Spotify Connect when Spotify moves to the background. **Resume** opens Spotify and starts the saved-position request during the same tap. Opening Spotify makes the phone reachable; the Worker sends the bookmarked audio and time while Spotify is in front. The phone flow checks actual playback before confirming success. For first discovery, the app needs a device list from the last minute; if it is missing or stale, Resume refreshes it and asks you to tap again, without opening Spotify or sending a playback command. The list also refreshes when you return to the page. A remembered phone uses its exact ID without that discovery preflight. Slow networks, a closed/uninstalled Spotify app, or a changed device ID can still prevent confirmation; check Spotify before retrying.
 
-**Add bookmark** and **Update position** also work with paused playback, provided Spotify still reports the item and position. They do not start audio. See the [iPhone guide](docs/iphone-setup.md). The old key/checkbox setup section has been removed from the website; existing API clients remain compatible.
+**Add bookmark** and **Update position** also work with paused playback, provided Spotify still reports the item and position. They do not start audio. Your existing Home Screen launcher is sufficient; no separate Shortcut credential is needed. See the [iPhone guide](docs/iphone-setup.md) for device discovery and troubleshooting.
 
 ## Behavior and limitations
 
@@ -141,7 +156,7 @@ A paused iPhone can disappear from Spotify Connect when Spotify moves to the bac
 
 ## Privacy and security
 
-Spotify access and refresh tokens stay on the server, encrypted in D1 with AES-256-GCM. Bookmark metadata and positions are stored in D1; they are not encrypted by the application. Browser sessions use HttpOnly cookies, and mutations require origin and CSRF checks. Shortcut credentials are hashed and revocable.
+Spotify access and refresh tokens stay on the server, encrypted in D1 with AES-256-GCM. Bookmark metadata and positions are stored in D1; they are not encrypted by the application. Browser sessions use HttpOnly cookies, and mutations require origin and CSRF checks. Advanced legacy API clients can use hashed, revocable Shortcut credentials; normal use of the website needs no such credential.
 
 **Disconnect Spotify** removes stored Spotify credentials, ends browser sessions, and revokes Shortcut access. It retains bookmarks and the owner binding. To revoke Spotify's grant itself, also remove the app in Spotify's account app-access settings.
 
@@ -152,11 +167,11 @@ Never commit `.dev.vars`, `.env.production`, database exports, or populated Shor
 | Symptom | What to do |
 | --- | --- |
 | No active device, even though Spotify is open | **Refresh devices**, choose the intended device under **Where to play**, then Resume. If absent, open Spotify there and refresh. |
+| Idle iPhone is missing from the device list | On the iPhone, choose the persistent **This iPhone** entry and tap **Resume**. Keep Spotify visible after it opens. If the app cannot identify the phone on first use, follow its refresh/device-selection message. |
 | Nothing saves | Open a supported track or podcast episode using the connected account. Playing or paused is fine; Spotify must still report its position. |
 | Podcast playback is not confirmed | Open the saved episode in Spotify or choose another available device, then retry Resume. The app keeps the bookmark and does not skip through your queue. A timeout means playback could not be confirmed; check Spotify before retrying. |
 | Sign-in fails | Check the setup key, original owner account, app access, and exact callback. Both playback permissions are required. |
 | Reconnect requested | Authorize the same account again. Your bookmarks remain. |
-| Shortcut stopped after replacing its credential | Update the Authorization header. Include `Bearer` followed by one space and the new credential. |
 | Rate limit or quota error | Respect `Retry-After` if provided. Repeated attempts do not fix quota exhaustion. |
 | `spotify_busy` | Credential refresh is in progress. Try again after a short pause. |
 | Lost encryption key | Follow the [recovery procedure](docs/deployment.md#lost-key-or-token-compromise-recovery), then reconnect. Existing encrypted credentials cannot be recovered without their key. |
@@ -178,12 +193,25 @@ TypeScript Worker, plain HTML/CSS/JavaScript, and D1 SQL. No frontend framework 
 | --- | --- |
 | `src/index.ts` | Routes, owner/session checks, bookmarks, and device selection |
 | `src/spotify.ts` | Spotify requests, token refresh, automatic context selection, and resume payload |
+| `src/phone-resume.ts` | Bounded phone discovery, exact-device resume, and playback confirmation |
 | `src/crypto.ts` | Encryption, credential generation, and hashing |
 | `public/` | Web interface |
 | `migrations/` | D1 database schema |
 | `tests/` | Application tests; not a substitute for real device checks |
-| `docs/` | Deployment, Shortcut instructions, security, and verification |
+| `docs/` | Deployment, iPhone/Home Screen guides, API reference, security, and verification |
 
-See the [API reference](docs/api.md) for integration details and the [manual verification plan](docs/manual-test-plan.md) before a release. The original instance has completed sign-in, bookmark capture, and explicit desktop playback checks. The podcast fix has passed direct live checks of the actual playback function on Windows, including switching shows and resolving an older bookmark's show; this does not establish hosted save/resume integration. A complete physical iPhone/device matrix has not been independently verified.
+See the [API reference](docs/api.md) for integration details and the [manual verification plan](docs/manual-test-plan.md) before a release.
+
+### Verification on the original deployment
+
+As of 26 October 2026:
+
+| Area | Evidence and scope |
+| --- | --- |
+| One-tap iPhone music resume | The owner confirmed on a physical iPhone that **This iPhone → Resume** opens Spotify and resumes the selected music bookmark at its saved position, with no second in-app button. |
+| Desktop podcasts | Direct live playback-function checks on Windows confirmed episodes from two shows and show lookup for an older episode bookmark. This is narrower than a complete hosted podcast save/resume check. |
+| Device routing and safeguards | Local browser checks with actual app routes and a synthetic Spotify provider covered first/remembered phone targeting, speakers, missing devices, keyboard activation, and duplicate-click suppression. These do not establish native iPhone app opening by themselves. |
+
+The iPhone result is an owner-reported device check, not an independently observed test across all clients. Other iOS/Spotify versions, iPhone podcast resume, and a complete device matrix remain unverified. Browser checks and compilation do not replace real playback checks on your intended device.
 
 Pull requests and pushes to `main` run **Typecheck and build** in GitHub Actions. This checks compilation and Worker packaging; it does not run the application test suite, use Spotify credentials, or deploy to Cloudflare.
