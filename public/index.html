@@ -23,17 +23,10 @@
       <p class="hint">Add bookmark creates a separate save. Use a bookmark’s Update position button to replace its saved audio and time with your current playing or paused item, keeping its name. Resume uses your active Spotify device, or choose one below.</p>
       <label for="playback-device">Where to play</label>
       <div class="device-controls"><select id="playback-device"><option value="">Active Spotify device</option></select><button id="refresh-devices" class="quiet">Refresh devices</button></div>
+      <p id="phone-resume-help" class="hint" hidden><strong>Resume without pressing Play first:</strong> tap <strong>Resume on this iPhone</strong>, then <strong>Open Spotify &amp; resume</strong>. Keep Spotify on the screen while your saved position starts.</p>
       <p id="empty" class="panel" hidden>Your shelf is empty. Open music or a podcast in Spotify, playing or paused, and tap <strong>Add bookmark</strong>.</p>
       <div id="bookmarks" class="cards"></div>
-      <details class="panel"><summary>iPhone Shortcut &amp; account</summary>
-        <h3>Save from your iPhone</h3><p>The basic Shortcut adds a new bookmark. With update access, a Shortcut can also show bookmark names and replace a chosen bookmark’s saved audio and position with your current playing or paused item. Names stay unchanged.</p>
-        <p id="credential-status"></p>
-        <label class="check-option"><input id="allow-shortcut-updates" type="checkbox"> Allow this new credential to list bookmark names and update existing bookmarks</label>
-        <div class="actions"><button id="create-key" class="secondary">Create / replace Shortcut credential</button><button id="revoke-key" class="quiet">Revoke credential</button></div>
-        <div id="credential-box" hidden><p>Shown once. Copy it now and keep it private.</p><label for="credential">Shortcut credential</label><textarea id="credential" readonly rows="2" spellcheck="false" autocomplete="off"></textarea><button id="hide-key" class="quiet">Hide credential</button></div>
-        <ol><li>Add a URL action using <code id="endpoint"></code>.</li><li>Add <strong>Get Contents of URL</strong>: method <strong>POST</strong>, headers <strong>Authorization</strong> = <strong>Bearer YOUR_CREDENTIAL</strong> and <strong>X-Shortcut-Response</strong> = <strong>notification</strong>, and empty JSON body.</li><li>Get dictionary value <strong>message</strong> from the response and use <strong>Show Notification</strong>.</li><li>Run once to allow network access, then add the Shortcut to your Home Screen or widget.</li></ol>
-        <p>Keep Spotify tokens out of the Shortcut. Never share a Shortcut containing this credential.</p>
-        <hr><h3>Account</h3><p>Reconnect periodically when Spotify authorization expires. Your existing bookmarks stay saved.</p>
+      <details class="panel"><summary>Spotify account</summary><p>Reconnect periodically when Spotify authorization expires. Your existing bookmarks stay saved.</p>
         <div class="actions"><button id="reconnect" class="secondary">Reconnect Spotify</button><button id="logout" class="quiet">Sign out</button><button id="disconnect" class="quiet danger">Disconnect Spotify</button></div>
       </details>
     </section>

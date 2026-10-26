@@ -54,7 +54,7 @@ Pull the intended changes, install locked dependencies with `npm ci`, review any
 
 An update to Worker code does not automatically apply D1 migrations. For schema changes, back up first, review compatibility, and explicitly apply the intended migrations with the production config.
 
-`0004_shortcut_update_access.sql` adds an `allow_updates` flag with a default of zero. Apply it before deploying the add/update Shortcut code. Existing credentials remain add-only; no credential rotation or permission expansion happens during migration. This additive migration does not copy bookmark tables or require a bookmark write pause. Update access is granted only when the owner creates a replacement credential with the checkbox enabled. Updating a bookmark changes only the active `saved_bookmarks` row; recovery tables remain historical copies.
+`0004_shortcut_update_access.sql` adds an `allow_updates` flag with a default of zero for legacy API clients. Existing credentials remain add-only; no credential rotation or permission expansion happens during migration. This additive migration does not copy bookmark tables or require a bookmark write pause. The website's credential/checkbox section has since been removed. Legacy clients can still use the authenticated credential API with an explicit `allowUpdates` option. The normal browser flow needs no Shortcut credential. Updating a bookmark changes only the active `saved_bookmarks` row; recovery tables remain historical copies.
 
 ### Upgrade to independent save points
 
@@ -100,7 +100,7 @@ Restore into a **new empty approved D1 database**, never over a populated one. I
 1. Revoke the app's access in Spotify account settings if Spotify tokens may be compromised. Revoke the Shortcut credential if only the Shortcut leaked.
 2. Back up retained bookmarks if needed. In an approved D1 operation, delete `spotify_credentials`, `oauth_states`, `sessions`, and `shortcut_credentials`; retain `owner` and all bookmark tables for the same account.
 3. Replace the encryption key and/or setup key as appropriate. Update the deployed Worker secrets with approval.
-4. Sign in as the same owner and create a new Shortcut credential. Test save/resume again. Lost ciphertext keys cannot be recovered by resetting the key alone.
+4. Sign in as the same owner and test save/resume again. If you maintain legacy API clients, provision their replacement credentials through the authenticated API. Lost ciphertext keys cannot be recovered by resetting the key alone.
 
 ## Rollback
 

@@ -1,10 +1,11 @@
 import { AppError, type Env, type Fetch, type Session, type Bookmark } from './types.ts';
 import { hash, randomToken, encrypt, decrypt, equalSecret } from './crypto.ts';
 import { SCOPES, tokenExchange, storeAuthorization, spotify, spotifyFailure, bookmarkFromPlayback, playlistMetadata, resumeBookmark } from './spotify.ts';
+import {resumeOnPhone} from './phone-resume.ts';
 
 const minute = 60000;
 const day = 86400000;
-const bookmarkPattern = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume|\/update)?$/;
+const bookmarkPattern = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume|\/resume-on-phone|\/update)?$/;
 function slotId(id: string): string { return /^[A-Za-z0-9]{22}$/.test(id) ? `album_${id}` : id; }
 function local(env: Env): boolean { return new URL(env.APP_ORIGIN).protocol === 'http:'; }
 function cookieName(env: Env, kind: string): string { return `${local(env) ? '' : '__Host-'}album_${kind}`; }
@@ -104,7 +105,7 @@ async function updateBookmark(env: Env, fetcher: Fetch, account: string, bookmar
   return json({ok:true,bookmarkId,message:`Bookmark updated to ${captured.item_name} at ${position(captured.progress_ms)}. Its name is unchanged.`});
 }
 
-async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Response> {
+async function routes(request: Request, env: Env, fetcher: Fetch, context?: Pick<ExecutionContext,'waitUntil'>): Promise<Response> {
   const url = new URL(request.url), path = url.pathname, now = Date.now();
   if (url.origin !== env.APP_ORIGIN) throw new AppError(400,'wrong_origin','Use the configured bookmark page address.');
   const sensitive = path.startsWith('/api/') || path.startsWith('/auth/');
@@ -228,6 +229,21 @@ async function routes(request: Request, env: Env, fetcher: Fetch): Promise<Respo
       return json({ok:true,message:'Bookmark deleted.'});
     }
     await rate(env,`resume:${session.account_id}`,15);
+    if (bookmarkRoute[2] === '/resume-on-phone') {
+      let body: any;
+      try { body = JSON.parse(await limitedText(request)); }
+      catch (error) { if(error instanceof AppError) throw error; throw new AppError(400,'phone_request','Refresh devices, then tap Resume on this iPhone again.'); }
+      if (!body || !Array.isArray(body.seenDeviceIds) || body.seenDeviceIds.length>100 ||
+          !body.seenDeviceIds.every((id: any)=>typeof id==='string' && id.length>0 && id.length<=256) ||
+          (body.deviceId!==undefined && (typeof body.deviceId!=='string' || !body.deviceId || body.deviceId.length>256)))
+        throw new AppError(400,'phone_request','Refresh devices, then tap Resume on this iPhone again.');
+      const task = resumeOnPhone(env,fetcher,bookmark,{deviceId:body.deviceId,seenDeviceIds:body.seenDeviceIds});
+      // Keep the bounded operation alive if Safari backgrounds/disconnects when
+      // the user opens Spotify. Rejections still reach the normal JSON handler.
+      context?.waitUntil(task.then(()=>{},()=>{}));
+      const phone = await task;
+      return json({ok:true,phone,message:`Playback confirmed on ${phone.name}.`});
+    }
     const text = await limitedText(request);
     let selected: string | undefined;
     if (text) {
@@ -307,9 +323,9 @@ function harden(response: Response, requestId: string): Response {
 }
 export function createApp(fetcher: Fetch = fetch) {
   return {
-    async fetch(request: Request, env: Env): Promise<Response> {
+    async fetch(request: Request, env: Env, context?: Pick<ExecutionContext,'waitUntil'>): Promise<Response> {
       const requestId = crypto.randomUUID();
-      try { config(env); return harden(await routes(request,env,fetcher),requestId); }
+      try { config(env); return harden(await routes(request,env,fetcher,context),requestId); }
       catch (error) {
         const known = error instanceof AppError;
         if (!known) console.error(JSON.stringify({event:'request_failed',request_id:requestId}));

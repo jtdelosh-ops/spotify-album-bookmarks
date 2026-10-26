@@ -2,7 +2,7 @@
 
 **Add a save point for any moment in your Spotify listening.**
 
-A small, self-hosted app for keeping independent save points, like video game saves, across music and podcasts. **Add bookmark** creates a new entry; **Update position** replaces one selected save with your current playing or paused audio and time, keeping its name. Later, tap **Resume** on the save you want. Your iPhone Shortcut can offer the same add-or-update choice.
+A small, self-hosted app for keeping independent save points, like video game saves, across music and podcasts. **Add bookmark** creates a new entry; **Update position** replaces one selected save with your current playing or paused audio and time, keeping its name. Later, tap **Resume** on the save you want. On iPhone, the app can open Spotify and resume the chosen save without first playing unrelated audio.
 
 For example: create **Gym** and **Evening listening**, even in the same album, plus a podcast at **23:45**. Update **Gym** after your next session, or add a new save to keep both positions. Updates can replace the audio too: a slot is not tied to one album or episode. Each entry has its own Resume, Update position, Name/Rename, and Delete actions.
 
@@ -11,7 +11,7 @@ This is a personal app for **one Spotify account per deployment**. You host your
 ## What you get
 
 - A flat, mobile-friendly shelf with named bookmarks that you can add, update, resume, or delete individually.
-- An iPhone Shortcut to add a save or pick an existing bookmark to update from the Home Screen or a widget.
+- Open the page with your existing Home Screen shortcut; add, update, and resume directly in the app.
 - Resume on your active Spotify player, or choose a computer, phone, or speaker under **Where to play**.
 - Resume supplies the original album/playlist or parent podcast show, the exact saved track/episode, and its time together. Podcast resume also checks the reported episode, device, playback status, and position before confirming success.
 - Private bookmarks stored in your own Cloudflare Worker and D1 database.
@@ -22,7 +22,7 @@ This is a personal app for **one Spotify account per deployment**. You host your
 
 ```mermaid
 flowchart LR
-    A[Web page or iPhone Shortcut] -->|Save| B[Cloudflare Worker]
+    A[Bookmark page] -->|Save| B[Cloudflare Worker]
     B -->|Read current track and position| C[Spotify Web API]
     B -->|Insert a new save point| D[(Cloudflare D1)]
     E[Web page: Resume] -->|Read saved bookmark| B
@@ -50,7 +50,7 @@ Spotify sign-in uses PKCE and requests `user-read-playback-state` and `user-modi
 - Your own [Spotify developer app](https://developer.spotify.com/dashboard) with Web API access and your account permitted to use it. App eligibility and development limits follow Spotify's [current quota-mode rules](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 - **Node.js 24 or later**, npm, and Git for local development.
 - A **Cloudflare account** with Workers and D1 access for hosting. Check your plan's limits and usage; this project does not guarantee free hosting.
-- An iPhone with Apple's Shortcuts app for one-tap saving. The web page can save without a Shortcut.
+- Safari and the Spotify app for the iPhone resume flow. A Home Screen launcher is optional.
 
 ## Run locally
 
@@ -106,7 +106,7 @@ Open [127.0.0.1:8787](http://127.0.0.1:8787), enter your setup key, and authoriz
 
 Open a music track or podcast episode, playing or paused, and tap **Add bookmark**. To resume, use the active player or tap **Refresh devices**, select a device under **Where to play**, and tap **Resume** on a bookmark. Choosing another device may move playback there.
 
-Your iPhone cannot use the computer's loopback address. Deploy an HTTPS instance before setting up the real Shortcut.
+Your iPhone cannot use the computer's loopback address. Deploy an HTTPS instance before using the app from your phone.
 
 ## Host your own copy
 
@@ -116,31 +116,22 @@ Start with **[`wrangler.production.example.jsonc`](wrangler.production.example.j
 
 The guide also covers updates, backups, and key recovery.
 
-## Set up the iPhone Shortcut
+## Resume on your iPhone without pressing Play first
 
-After signing in to your hosted page:
+1. Open the HTTPS bookmark page using your existing Home Screen shortcut or Safari.
+2. On a saved bookmark, tap **Resume on this iPhone**.
+3. Tap **Open Spotify & resume** and allow Spotify to open. Keep Spotify on the screen while the app starts the saved audio at its bookmarked position.
 
-1. Expand **iPhone Shortcut & account**, choose **Create / replace Shortcut credential**, and copy the value shown once.
-2. In Shortcuts, create **Bookmark listening**. Add **Get Contents of URL** for `https://YOUR_HOST/api/bookmarks/current`.
-3. Set method **POST**, an empty JSON body, and these headers:
+If your iPhone is already listed under **Where to play**, select it once before step 2. The app remembers the successfully used phone in that browser for up to 30 days. If no phone is listed on first use, it waits for one new phone to appear after Spotify opens. It refuses to choose between multiple new phones. No extra save Shortcut or private Shortcut key is needed.
 
-   | Header | Value |
-   | --- | --- |
-   | `Authorization` | `Bearer YOUR_SHORTCUT_CREDENTIAL` |
-   | `X-Shortcut-Response` | `notification` |
-   | `Content-Type` | `application/json` |
+Why two steps? A paused iPhone can disappear from Spotify Connect when Spotify moves to the background. Opening Spotify makes the phone reachable; the Worker sends the bookmarked audio and time while Spotify is in front. The phone flow checks actual playback before confirming success. It is a short, user-triggered operation, not continuous background monitoring. Slow networks, a closed/uninstalled Spotify app, or a changed device ID can still prevent confirmation; check Spotify before retrying.
 
-4. Get the response dictionary's **message** value and pass it to **Show Notification**.
-5. Run once with music or a podcast open in Spotify, playing or paused, allow the requested permissions, and add the Shortcut to your Home Screen or widget. Existing Shortcuts keep their URL, headers, and credential.
-
-The [full Shortcut guide](docs/shortcut-setup.md) covers each action, examples, and revocation. This repository provides a manual recipe, not an importable `.shortcut` file.
-
-The Shortcut credential is separate from the setup key. Existing credentials keep **add-only access**. To build the add/update menu, check **Allow this new credential to list bookmark names and update existing bookmarks**, then create a replacement and update your Shortcut header. That optional access exposes a small choice list and can replace a selected slot's audio/position; it cannot rename, delete, resume, or read full bookmark records. Replacing a credential invalidates the old one. Follow the [add/update Shortcut recipe](docs/shortcut-setup.md#add-or-update-menu). Do not share a populated Shortcut.
+**Add bookmark** and **Update position** also work with paused playback, provided Spotify still reports the item and position. They do not start audio. See the [iPhone guide](docs/iphone-setup.md). The old key/checkbox setup section has been removed from the website; existing API clients remain compatible.
 
 ## Behavior and limitations
 
 - **Playing and paused saves are supported.** Spotify must still report a supported track/episode and a valid position. Closed/offline devices may return no state. Missing data, local files, ads, and audiobook chapters are rejected without overwriting a bookmark.
-- **Add and update are separate actions.** Add creates another entry; Update position replaces only the selected save. Neither runs automatically. Basic Shortcuts still add new bookmarks; the optional menu lets you choose an existing save.
+- **Add and update are separate actions.** Add creates another entry; Update position replaces only the selected save. Neither runs automatically.
 - **Timing is approximate.** Capture uses Spotify's reported position; network and device delays affect capture and resume.
 - **Devices must be available to Spotify.** Explicit selection can target an available idle device, but cannot guarantee waking a closed app or reaching an offline device.
 - **Shuffle and repeat stay as you set them.** Shuffle can change which track follows the bookmarked one.
