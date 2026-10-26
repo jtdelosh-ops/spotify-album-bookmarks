@@ -14,12 +14,14 @@ Spotify must still report its item and position. A closed/offline player or an e
 ## Resume without playing something first
 
 1. Under **Where to play**, choose **This iPhone**, then tap **Resume** on the saved bookmark.
-2. Tap **Open Spotify & resume**. If iOS asks whether to open Spotify, allow it.
+2. Spotify opens from that same tap. If iOS asks whether to open Spotify, allow it. There is no second in-app confirmation button.
 3. Keep Spotify visible while the saved audio starts at the bookmarked time. You do not need to press Play on another track first.
 
 Every bookmark has one **Resume** button. **This iPhone** is the default on iPhone and stays in the dropdown even when the phone disappears from Spotify Connect. The app uses the previously confirmed phone for up to 30 days. On first use, it looks for a single phone that becomes available after Spotify opens. If a phone is already listed and has not been remembered, choose it by name to resume directly. If several new phones appear, return and explicitly choose yours; it will not guess.
 
 A paused phone can disappear from Spotify Connect when you switch back to Safari. The open-and-resume flow keeps the request running briefly while Spotify is in front. It uses up to five device checks, waits up to about 12 seconds for the phone, and bounds the full operation to about 22 seconds. A network failure or timeout means playback was not confirmed; check Spotify before retrying. If Spotify was reinstalled and its device ID changed, choose the phone again when it is available.
+
+On first use, discovery needs a device list fetched within the last minute. If it is missing or stale, the app refreshes the list and asks you to tap Resume again; it sends no playback command and does not open Spotify during that refresh. Returning to the page also refreshes the list. Once the phone has been confirmed, Resume uses its exact remembered ID.
 
 ## Other playback devices
 
