@@ -8,7 +8,7 @@ interface CaptureJob {
   error_code:string|null;error_message:string|null;created_at:number;expires_at:number;
 }
 interface Captured {
-  bookmark:Bookmark;capturedAt:number;phone:{id:string;name:string};
+  bookmark:Bookmark;capturedAt:number;phone?:{id:string;name:string};
 }
 export const captureIdValid = (id:unknown):id is string => typeof id==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id);
 const fingerprint = (b:Bookmark) => hash(JSON.stringify([b.created_at,b.updated_at,b.label,b.item_uri,b.context_uri,b.progress_ms]));
@@ -36,7 +36,18 @@ async function stillWaiting(env:Env,job:CaptureJob):Promise<void> {
   if(!bookmark||await fingerprint(bookmark)!==job.base_fingerprint)
     throw new AppError(409,'bookmark_changed','This bookmark changed while waiting. Open Update position again.');
 }
-async function capturePaused(env:Env,fetcher:Fetch,job:CaptureJob,target:{deviceId?:string;seenDeviceIds:string[]}):Promise<void> {
+async function storeCapture(env:Env,fetcher:Fetch,job:CaptureJob,state:any,phone?:{id:string;name:string}):Promise<void> {
+  const capturedAt=Date.now(),bookmark=bookmarkFromPlayback(state,job.account_id,capturedAt);
+  if(bookmark.context_type==='playlist'){
+    const metadata=await playlistMetadata(env,fetcher,bookmark.context_id);
+    if(metadata){bookmark.context_name=metadata.name;bookmark.image_url=metadata.image;}
+  }
+  const value:Captured={bookmark,capturedAt,phone};
+  const stored=await encrypt(env,JSON.stringify(value),aad(job));
+  await env.DB.prepare("UPDATE update_captures SET status='ready',capture_encrypted=? WHERE capture_id=? AND status='waiting' AND expires_at>?")
+    .bind(stored,job.capture_id,Date.now()).run();
+}
+async function capturePaused(env:Env,fetcher:Fetch,job:CaptureJob,target:{deviceId?:string;seenDeviceIds:string[]},automatic=false):Promise<void> {
   const deadline=Date.now()+25000,phoneDeadline=Date.now()+16000;
   const bounded:Fetch=(input,init={})=>{
     const remaining=deadline-Date.now();
@@ -44,6 +55,21 @@ async function capturePaused(env:Env,fetcher:Fetch,job:CaptureJob,target:{device
     const signal=AbortSignal.timeout(Math.max(1,Math.min(4000,remaining)));
     return fetcher(input,{...init,signal:init.signal?AbortSignal.any([init.signal,signal]):signal});
   };
+  if(automatic){
+    await stillWaiting(env,job);
+    const response=await spotify(env,bounded,'/me/player?additional_types=track,episode');
+    const current=response.status===204?null:await response.json();
+    try {
+      bookmarkFromPlayback(current,job.account_id,Date.now());
+    } catch(error){
+      if(!(error instanceof AppError)||!['nothing_playing','missing_position'].includes(error.code))throw error;
+      // Only absent state needs phone reconnection. Unsupported audio still fails.
+      return captureUnavailablePhone();
+    }
+    await storeCapture(env,bounded,job,current);return;
+  }
+  return captureUnavailablePhone();
+  async function captureUnavailablePhone():Promise<void>{
   let phone:any,devices:any[]=[];
   for(let n=0;n<9&&Date.now()<phoneDeadline;n++){
     await stillWaiting(env,job);
@@ -52,8 +78,8 @@ async function capturePaused(env:Env,fetcher:Fetch,job:CaptureJob,target:{device
     if(!Array.isArray(devices))devices=[];
     if(target.deviceId)phone=devices.find(d=>d.id===target.deviceId);
     else{
-      const candidates=devices.filter(d=>typeof d.id==='string'&&d.id&&!target.seenDeviceIds.includes(d.id)&&d.type?.toLowerCase()==='smartphone');
-      if(candidates.length>1)throw new AppError(409,'phone_ambiguous','Several phones appeared. Return and choose your iPhone by name under Where to play, then try recovery again.');
+      const candidates=devices.filter(d=>typeof d.id==='string'&&d.id&&(automatic||!target.seenDeviceIds.includes(d.id))&&d.type?.toLowerCase()==='smartphone');
+      if(candidates.length>1)throw new AppError(409,'phone_ambiguous',automatic?'Spotify reported several phones and could not identify this iPhone. Your bookmark was not changed.':'Several phones appeared. Return and choose your iPhone by name under Where to play, then try recovery again.');
       phone=candidates[0];
     }
     if(phone)break;
@@ -65,11 +91,12 @@ async function capturePaused(env:Env,fetcher:Fetch,job:CaptureJob,target:{device
   await stillWaiting(env,job);
   const beforeResponse=await spotify(env,bounded,'/me/player?additional_types=track,episode');
   let state:any=beforeResponse.status===204?null:await beforeResponse.json();
-  if(state&&(state.is_playing!==false||state.device?.id!==phone.id))
+  if(state&&((!automatic&&state.is_playing!==false)||typeof state.is_playing!=='boolean'||state.device?.id!==phone.id))
     throw new AppError(409,'playback_changed','Playback changed or belongs to another device. Leave this iPhone paused and try again.');
-  if(!state){
-    // Explicitly requested recovery only. This can change playback context, so
-    // the resulting snapshot must be shown and confirmed before a bookmark write.
+  const reconnected=!state;
+  if(reconnected){
+    // The one-press browser action explicitly requests capture and replacement.
+    // Keep playback paused; never send a Play command to obtain a position.
     await stillWaiting(env,job);
     await spotify(env,bounded,'/me/player',{method:'PUT',body:JSON.stringify({device_ids:[phone.id],play:false})});
     for(let n=0;n<3&&Date.now()<deadline;n++){
@@ -79,21 +106,13 @@ async function capturePaused(env:Env,fetcher:Fetch,job:CaptureJob,target:{device
       if(state)break;
     }
   }
-  if(!state||state.is_playing!==false||state.device?.id!==phone.id||state.device?.is_restricted||state.device?.type?.toLowerCase()!=='smartphone')
+  if(!state||((!automatic||reconnected)&&state.is_playing!==false)||typeof state.is_playing!=='boolean'||state.device?.id!==phone.id||state.device?.is_restricted||state.device?.type?.toLowerCase()!=='smartphone')
     throw new AppError(409,'paused_capture_unconfirmed','Spotify did not confirm a paused position on this iPhone. Your bookmark was not changed.');
-  const capturedAt=Date.now();
-  const bookmark=bookmarkFromPlayback(state,job.account_id,capturedAt);
-  if(bookmark.context_type==='playlist'){
-    const metadata=await playlistMetadata(env,bounded,bookmark.context_id);
-    if(metadata){bookmark.context_name=metadata.name;bookmark.image_url=metadata.image;}
+  await storeCapture(env,bounded,job,state,{id:phone.id,name:typeof phone.name==='string'?phone.name:'iPhone'});
   }
-  const value:Captured={bookmark,capturedAt,phone:{id:phone.id,name:typeof phone.name==='string'?phone.name:'iPhone'}};
-  const stored=await encrypt(env,JSON.stringify(value),aad(job));
-  await env.DB.prepare("UPDATE update_captures SET status='ready',capture_encrypted=? WHERE capture_id=? AND status='waiting' AND expires_at>?")
-    .bind(stored,job.capture_id,Date.now()).run();
 }
 export async function startPausedCapture(env:Env,fetcher:Fetch,session:Session,bookmark:Bookmark,
-  input:{captureId:string;deviceId?:string;seenDeviceIds:string[]},context:Pick<ExecutionContext,'waitUntil'>):Promise<void> {
+  input:{captureId:string;deviceId?:string;seenDeviceIds:string[]},context:Pick<ExecutionContext,'waitUntil'>,automatic=false):Promise<void> {
   const now=Date.now();
   const job:CaptureJob={capture_id:input.captureId,account_id:session.account_id,session_hash:session.token_hash,
     bookmark_id:bookmark.bookmark_id,base_fingerprint:await fingerprint(bookmark),status:'waiting',capture_encrypted:null,
@@ -109,10 +128,12 @@ export async function startPausedCapture(env:Env,fetcher:Fetch,session:Session,b
     if(existing.bookmark_id!==bookmark.bookmark_id)throw new AppError(409,'capture_conflict','This capture belongs to a different bookmark. Open Update position again.');
     return;
   }
-  const task=capturePaused(env,fetcher,job,input).catch(async(error:unknown)=>{
+  const task=capturePaused(env,fetcher,job,input,automatic).then(async()=>{
+    if(automatic)await confirmPausedCapture(env,session,job.capture_id);
+  }).catch(async(error:unknown)=>{
     const known=error instanceof AppError;
     const noDevice=known&&error.code==='no_device';
-    await env.DB.prepare("UPDATE update_captures SET status='failed',error_code=?,error_message=? WHERE capture_id=? AND status='waiting'")
+    await env.DB.prepare("UPDATE update_captures SET status='failed',capture_encrypted=NULL,error_code=?,error_message=? WHERE capture_id=? AND status IN ('waiting','ready')")
       .bind(noDevice?'phone_unavailable':known?error.code:'capture_failed',
         noDevice?'Spotify could not reconnect this iPhone. Keep it paused with its devices panel open and This iPhone selected, then try recovery again. Your bookmark was not changed.'
           :known?error.message:'Capture could not complete. Your bookmark was not changed.',job.capture_id).run();

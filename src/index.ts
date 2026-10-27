@@ -6,7 +6,7 @@ import {captureIdValid,startPausedCapture,readPausedCapture,cancelPausedCapture,
 
 const minute = 60000;
 const day = 86400000;
-const bookmarkPattern = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume|\/resume-on-phone|\/update|\/recover-paused)?$/;
+const bookmarkPattern = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume|\/resume-on-phone|\/update|\/recover-paused|\/update-on-phone)?$/;
 function slotId(id: string): string { return /^[A-Za-z0-9]{22}$/.test(id) ? `album_${id}` : id; }
 function local(env: Env): boolean { return new URL(env.APP_ORIGIN).protocol === 'http:'; }
 function cookieName(env: Env, kind: string): string { return `${local(env) ? '' : '__Host-'}album_${kind}`; }
@@ -217,7 +217,7 @@ async function routes(request: Request, env: Env, fetcher: Fetch, context?: Pick
     if (bookmarkRoute[2] === '/update') return updateBookmark(env,fetcher,session.account_id,bookmarkId,now);
     const bookmark = await env.DB.prepare('SELECT * FROM saved_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId).first<Bookmark>();
     if (!bookmark) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
-    if (bookmarkRoute[2] === '/recover-paused') {
+    if (['/recover-paused','/update-on-phone'].includes(bookmarkRoute[2])) {
       if (!context) throw new AppError(503,'capture_unavailable','Paused recovery is unavailable. Your bookmark was not changed.');
       if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new AppError(415,'content_type','Send recovery details as JSON.');
       let body:any;
@@ -227,8 +227,8 @@ async function routes(request: Request, env: Env, fetcher: Fetch, context?: Pick
         !body.seenDeviceIds.every((id:any)=>typeof id==='string'&&id.length>0&&id.length<=256)||
         (body.deviceId!==undefined&&(typeof body.deviceId!=='string'||!body.deviceId||body.deviceId.length>256)))
         throw new AppError(400,'capture_request','Open Update position and try recovery again.');
-      await rate(env,`paused-capture:${session.account_id}`,5);
-      await startPausedCapture(env,fetcher,session,bookmark,body,context);
+      await rate(env,bookmarkRoute[2]==='/update-on-phone'?`save:${session.account_id}`:`paused-capture:${session.account_id}`,bookmarkRoute[2]==='/update-on-phone'?30:5);
+      await startPausedCapture(env,fetcher,session,bookmark,body,context,bookmarkRoute[2]==='/update-on-phone');
       return json({ok:true,captureId:body.captureId,status:'waiting'},202);
     }
     if (request.method === 'PATCH') {

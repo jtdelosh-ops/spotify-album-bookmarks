@@ -8,7 +8,7 @@ Protected assets include Spotify tokens, bookmark listening history, browser ses
 
 ## Controls
 
-Paused update recovery is browser-only. Its five-minute preview is encrypted with authenticated data bound to the owner, session hash and capture ID. Confirmation consumes the displayed snapshot transactionally and rejects a changed/deleted bookmark. Cancellation, confirmation, logout and disconnect clear associated snapshots; expiration is enforced on reads/confirmation and rows are purged on the next capture or daily cleanup. A recovery may send one explicit `play:false` device transfer and can change Spotify’s queue, so it never overwrites a save until the user reviews and confirms the captured audio/time. No Play command or extra Spotify scope is introduced. Legacy Bearer grants cannot start, read, cancel or confirm recovery.
+Automatic iPhone Update is browser-only. The user requests replacement with one tap; the Worker captures valid playing or paused state and commits the encrypted, five-minute, session-bound snapshot transactionally. If reconnection is needed, play:false may change Spotify’s queue; the page discloses this without another confirmation step. No Play command or extra scope is introduced. Invalid state, a changed/deleted slot, or a failed reconnect preserves the old save. Old manual previews are never auto-confirmed; Bearer grants cannot use phone update/recovery routes.
 
 | Threat | Control and relevant implementation |
 | --- | --- |
