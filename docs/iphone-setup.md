@@ -13,7 +13,7 @@ Spotify must still report its item and position. A closed/offline player or an e
 
 For paused iPhone playback, recovery is available immediately; you do not need to make an Update attempt fail first:
 
-1. Choose **This iPhone** under **Where to play**. Open the selected bookmark’s **Update position** panel and tap **Recover paused position**.
+1. Choose **This iPhone** under **Where to play**. Tap **Recover paused position** directly on the selected bookmark.
 2. In Spotify, open the devices/Connect panel below the player and select **This iPhone**. Leave it paused and visible while the app captures the position; do not press Play.
 3. Return to the bookmark page. Check the recovered audio title and time against Spotify.
 4. Tap **Save recovered position** to replace that bookmark with the displayed capture, or **Cancel update** to keep the earlier save.

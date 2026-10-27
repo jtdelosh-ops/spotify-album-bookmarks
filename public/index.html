@@ -25,7 +25,8 @@
       <div class="device-controls"><select id="playback-device"><option value="">Active Spotify device</option></select><button id="refresh-devices" class="quiet">Refresh devices</button></div>
       <p id="phone-resume-help" class="hint" hidden><strong>For this iPhone:</strong> choose <strong>This iPhone</strong> above and tap <strong>Resume</strong>. Spotify opens automatically. Keep it on the screen while your saved position starts. You do not need to press Play first.</p>
       <p id="empty" class="panel" hidden>Your shelf is empty. Open music or a podcast in Spotify, playing or paused, and tap <strong>Add bookmark</strong>.</p>
-      <div id="bookmarks" class="cards"></div>
+        <p id="phone-recovery-help" class="hint" hidden><strong>Recover paused position</strong> on a bookmark opens Spotify directly. Reconnecting can change your queue. Keep Spotify paused with This iPhone selected in its devices panel, then return to review and <strong>Save recovered position</strong>.</p>
+        <div id="bookmarks" class="cards"></div>
       <details class="panel"><summary>Spotify account</summary><p>Reconnect periodically when Spotify authorization expires. Your existing bookmarks stay saved.</p>
         <div class="actions"><button id="reconnect" class="secondary">Reconnect Spotify</button><button id="logout" class="quiet">Sign out</button><button id="disconnect" class="quiet danger">Disconnect Spotify</button></div>
       </details>
