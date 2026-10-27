@@ -33,7 +33,7 @@ After connecting your Spotify account:
 
 You can keep several saves in the same album, playlist, or episode. Use **Add bookmark** when you want to preserve an older position; updating replaces it and has no undo. Saving or updating does not start playback. Spotify must still report the item and position, even when paused.
 
-If **Update now** cannot read a paused iPhone, its Update panel offers **Open Spotify & recover position**. This is a recovery step for that failure: open Spotify’s devices panel, select **This iPhone**, keep it paused, then return to review the captured title and time. **Update now** saves that exact capture; **Cancel update** keeps the earlier bookmark. Reconnecting can change Spotify’s queue, so check the preview against Spotify before confirming. Recovery never sends a Play command.
+For a paused iPhone, open **Update position** and choose **Recover paused position** directly. You do not need to try **Update now** first. Open Spotify’s devices panel, select **This iPhone**, keep it paused, then return to review the captured title and time. **Save recovered position** saves that exact capture; **Cancel update** keeps the earlier bookmark. Reconnecting can change Spotify’s queue, so check the preview against Spotify before confirming. Recovery never sends a Play command. Ordinary **Update now** remains available for current playback that Spotify already reports.
 
 ## How it works
 
@@ -173,7 +173,7 @@ Never commit `.dev.vars`, `.env.production`, database exports, or populated Shor
 | No active device, even though Spotify is open | **Refresh devices**, choose the intended device under **Where to play**, then Resume. If absent, open Spotify there and refresh. |
 | Idle iPhone is missing from the device list | On the iPhone, choose the persistent **This iPhone** entry and tap **Resume**. Keep Spotify visible after it opens. If the app cannot identify the phone on first use, follow its refresh/device-selection message. |
 | Nothing saves | Open a supported track or podcast episode using the connected account. Playing or paused is fine; Spotify must still report its position. |
-| Updating a paused iPhone fails | Use **Open Spotify & recover position** in that bookmark’s Update panel. Keep Spotify’s devices panel open with **This iPhone** selected, then return to review and confirm. If no capture is available, the bookmark stays unchanged. This recovery is for updating an existing bookmark. |
+| Updating a paused iPhone | Choose **Recover paused position** directly in that bookmark’s Update panel. Keep Spotify’s devices panel open with **This iPhone** selected, then return to review and **Save recovered position**. If no capture is available, the bookmark stays unchanged. This recovery is for updating an existing bookmark. |
 | Podcast playback is not confirmed | Open the saved episode in Spotify or choose another available device, then retry Resume. The app keeps the bookmark and does not skip through your queue. A timeout means playback could not be confirmed; check Spotify before retrying. |
 | Sign-in fails | Check the setup key, original owner account, app access, and exact callback. Both playback permissions are required. |
 | Reconnect requested | Authorize the same account again. Your bookmarks remain. |
@@ -220,6 +220,6 @@ As of 26 October 2026:
 
 The iPhone result is an owner-reported device check, not an independently observed test across all clients. Other iOS/Spotify versions, iPhone podcast resume, and a complete device matrix remain unverified. Browser checks and compilation do not replace real playback checks on your intended device.
 
-Paused-update recovery was added on 27 October 2026. Local checks exercise the actual routes and SQLite with a synthetic Spotify provider, including capture/review/confirm, cancellation, expiry, changed slots and session isolation. A 390-pixel browser preview checks reload/confirmation behavior. The earlier live reconnect probe exposed the owner’s paused position without Play in one confirmed case; this does not establish the complete new hosted recovery flow. Native iPhone opening, devices-panel timing and end-to-end recovery still require a physical-device check.
+Paused-update recovery was added on 27 October 2026. The owner confirmed the hosted flow worked on a physical iPhone without pressing Play. Local checks exercise the actual routes and SQLite with a synthetic Spotify provider, including capture/review/confirm, cancellation, expiry, changed slots and session isolation. A 390-pixel browser preview checks reload/confirmation behavior. The subsequent interface change offers recovery upfront and labels confirmation **Save recovered position**; the native opening and capture mechanism are unchanged. This is one owner-reported device result, not a guarantee across all iOS/Spotify versions or audio types.
 
 Pull requests and pushes to `main` run **Typecheck and build** in GitHub Actions. This checks compilation and Worker packaging; it does not run the application test suite, use Spotify credentials, or deploy to Cloudflare.

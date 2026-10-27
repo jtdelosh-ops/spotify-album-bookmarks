@@ -57,9 +57,10 @@ function time(ms) { const s = Math.floor(ms/1000); return `${Math.floor(s/60)}:$
 function element(tag, text, cls) { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; }
 function setupUpdate(b,bookmarkName,update,updatePanel) {
   const explanation=element('p',`Replace the saved audio and position for “${bookmarkName}” with Spotify’s current playing or paused item? Your bookmark name stays the same.`);
-  const recoveryHelp=element('p'); recoveryHelp.hidden=true;
+  const recoveryInstructions='Paused on your iPhone? Recover paused position opens Spotify; select This iPhone in its devices panel and keep it paused. Return here to review before saving. Reconnecting can change your queue.';
+  const recoveryHelp=element('p',recoveryInstructions); recoveryHelp.hidden=!onIPhone;
   const preview=element('p',null,'position'); preview.hidden=true;preview.setAttribute('aria-live','polite');
-  const recover=element('a','Open Spotify & recover position','recovery-control');recover.href='spotify:';recover.hidden=true;recover.setAttribute('role','button');
+  const recover=element('a','Recover paused position','recovery-control');recover.href='spotify:';recover.hidden=!onIPhone;recover.setAttribute('role','button');
   recover.onkeydown=event=>{if(event.key===' '){event.preventDefault();if(!event.repeat)recover.click();}};
   const updateNow=element('button','Update now','secondary');updateNow.setAttribute('aria-label',`Confirm update for ${bookmarkName}`);
   const cancel=element('button','Cancel update','quiet');
@@ -86,8 +87,9 @@ function setupUpdate(b,bookmarkName,update,updatePanel) {
       if(result.status==='ready') {
         rememberPhone(result.phone);
         preview.textContent=`${result.preview.itemName} — ${result.preview.creatorName} · ${time(result.preview.positionMs)} / ${time(result.preview.durationMs)} (captured ${new Date(result.preview.capturedAt).toLocaleTimeString()}).`;
-        preview.hidden=false;recoveryHelp.textContent=`Check this against Spotify. Update now replaces “${bookmarkName}” with exactly this captured audio and time, even if Spotify no longer reports it. Cancel keeps your existing save.`;
-        updateNow.hidden=false;status('Paused position captured. Review the audio and time before updating.');return;
+        preview.hidden=false;recoveryHelp.textContent=`Check this against Spotify. Save recovered position replaces “${bookmarkName}” with exactly this captured audio and time, even if Spotify no longer reports it. Cancel keeps your existing save.`;
+        updateNow.textContent='Save recovered position';updateNow.setAttribute('aria-label',`Save recovered position for ${bookmarkName}`);
+        updateNow.hidden=false;status('Paused position captured. Review the audio and time, then save the recovered position.');return;
       }
       if(result.status!=='waiting') {
         clearCapture(p.captureId);current=null;
@@ -100,11 +102,13 @@ function setupUpdate(b,bookmarkName,update,updatePanel) {
     if(!cancelled) {recoveryHelp.textContent='Capture has not completed. Cancel and try recovery again. Your bookmark has not changed.';status('Capture has not been confirmed. Your bookmark is unchanged.');}
   }
   updatePanels.set(b.bookmark_id,{monitor,fail(error){updatePanel.hidden=false;offerRecovery(error.message);current=null;}});
-  update.onclick=()=>{updatePanel.hidden=false;updateNow.hidden?cancel.focus():updateNow.focus();};
+  update.onclick=()=>{updatePanel.hidden=false;!recover.hidden?recover.focus():!updateNow.hidden?updateNow.focus():cancel.focus();};
   cancel.onclick=()=>{
     cancelled=true;const p=current;current=null;
     if(p){clearCapture(p.captureId);api(`/api/update-captures/${p.captureId}/cancel`,'POST',undefined,true).catch(()=>{});}
-    updatePanel.hidden=true;explanation.hidden=false;updateNow.hidden=false;recover.hidden=true;recoveryHelp.hidden=true;preview.hidden=true;update.focus();
+    updatePanel.hidden=true;explanation.hidden=false;updateNow.hidden=false;recover.hidden=!onIPhone;
+    updateNow.textContent='Update now';updateNow.setAttribute('aria-label',`Confirm update for ${bookmarkName}`);
+    recoveryHelp.textContent=recoveryInstructions;recoveryHelp.hidden=!onIPhone;preview.hidden=true;update.focus();
     status('Update cancelled. Your bookmark was not changed.');
   };
   updateNow.onclick=()=>action(async()=>{
@@ -126,7 +130,7 @@ function setupUpdate(b,bookmarkName,update,updatePanel) {
     const known=selected===thisPhone ? rememberedPhone() : chosen;
     if(selected!==thisPhone&&!chosen){event.preventDefault();status('Choose This iPhone or your phone by name under Where to play, then try recovery.',true);$('playback-device').focus();return;}
     if(!known&&(Date.now()-deviceSnapshotAt<0||Date.now()-deviceSnapshotAt>60000)){
-      event.preventDefault();action(async()=>{await refreshDevices();status('Devices refreshed. Tap Open Spotify & recover position again.');});return;
+      event.preventDefault();action(async()=>{await refreshDevices();status('Devices refreshed. Tap Recover paused position again.');});return;
     }
     if(!known&&deviceSnapshot.some(d=>d.type.toLowerCase()==='smartphone')){
       event.preventDefault();status('Choose your iPhone by name under Where to play, then try recovery.',true);$('playback-device').focus();return;
