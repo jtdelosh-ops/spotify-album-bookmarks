@@ -27,3 +27,9 @@
 | Mobile layout/accessibility | Inspect small and large iPhone widths, long album/track names, text scaling, focus/tap targets, empty list, multiple cards, visible feedback, and VoiceOver names for Resume/Delete. |
 
 Release can proceed only with an honest account of failed and unavailable checks. Passing mocked tests is not a substitute for observing successful Spotify playback and the iPhone app-opening flow on the intended device.
+
+## Unified playing/paused updates
+
+Each bookmark must expose exactly one Update position action. One tap updates valid playing and paused state; on iPhone the same tap opens Spotify and starts the keepalive request. No Recovery, Update now, preview/Save confirmation, or extra mode controls may appear. Verify both direct valid state (zero transfer commands) and unavailable state followed by exact-phone play:false reconnection. Never send Play. Check a paused track and episode; unsupported or unreported positions must fail without overwriting a save.
+
+Verify automatic capture/commit survives returning after Safari backgrounding or page reload. Repeated start with the same job ID must cause no duplicate transfer/write. Do not automatically commit old manual previews. Preserve ID, label, creation/order and siblings. Rename/update/delete during capture must reject a stale automatic commit. Refuse ambiguous, restricted or unreachable phones and another active device when reconnecting. Bearer credentials must not access the automatic phone route even with a valid cookie; browser Origin/CSRF remain required. Legacy capture/update grants remain unchanged. Reconnecting can change the queue; the user has requested automatic saving of Spotify-reported state and the page must display that caveat without an extra step.

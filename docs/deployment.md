@@ -104,4 +104,6 @@ Restore into a **new empty approved D1 database**, never over a populated one. I
 
 ## Rollback
 
+For paused iPhone Update recovery, `0005_paused_update_captures.sql` only adds a temporary encrypted-capture table and expiry index. Back up D1, apply this pending migration using the production config, then deploy the reviewed Worker/assets. It does not copy or rewrite bookmark rows and does not require the legacy table-copy procedure above. Verify existing bookmark values and credential counts are preserved. A code rollback can leave this additive table in place; its captures expire in five minutes, but an older Worker will not run their cleanup. Never expose exports or captured snapshots publicly. When clearing credentials/sessions during key recovery, also clear `update_captures`.
+
 Do not apply this first migration to an unrelated database. Before future schema changes, take an approved backup and review a compatible rollback plan. Reverting Worker code does not revert D1 schema or revoke credentials. No automatic rollback/deployment pipeline is included.

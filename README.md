@@ -26,12 +26,14 @@ After connecting your Spotify account:
 | What you want to do | Use |
 | --- | --- |
 | Keep a new moment | **Add bookmark** while the music or podcast is playing or paused |
-| Move an existing save to your current position | That bookmark's **Update position → Update now**; its name stays the same |
+| Move an existing save to your current position | That bookmark's **Update position**; its name stays the same |
 | Give a save a useful label | **Name** or **Rename**, such as Gym or Evening listening |
 | Return to a save | Choose a device under **Where to play**, then tap **Resume** on that bookmark |
 | Resume on the iPhone you're using | Choose **This iPhone**, tap **Resume**, and keep Spotify visible while playback starts |
 
 You can keep several saves in the same album, playlist, or episode. Use **Add bookmark** when you want to preserve an older position; updating replaces it and has no undo. Saving or updating does not start playback. Spotify must still report the item and position, even when paused.
+
+Tap **Update position** directly on the bookmark to replace its audio and time, playing or paused, while keeping its name. On iPhone, that same tap opens Spotify and completes the save automatically while Spotify is visible. There is no recovery choice or second Save button. If Spotify supplies no state, the app may reconnect the phone without sending Play. Reconnection can change the queue; the bookmark records the audio and position Spotify reports. Missing or invalid data leaves the earlier save unchanged.
 
 ## How it works
 
@@ -158,6 +160,8 @@ A paused iPhone can disappear from Spotify Connect when Spotify moves to the bac
 
 Spotify access and refresh tokens stay on the server, encrypted in D1 with AES-256-GCM. Bookmark metadata and positions are stored in D1; they are not encrypted by the application. Browser sessions use HttpOnly cookies, and mutations require origin and CSRF checks. Advanced legacy API clients can use hashed, revocable Shortcut credentials; normal use of the website needs no such credential.
 
+iPhone updates briefly store an encrypted, session-bound capture in D1 so the save can finish while Safari is backgrounded. The Worker commits that snapshot automatically and clears it on success. Jobs expire after five minutes; daily cleanup or the next update removes expired rows. Legacy Shortcut permissions do not change.
+
 **Disconnect Spotify** removes stored Spotify credentials, ends browser sessions, and revokes Shortcut access. It retains bookmarks and the owner binding. To revoke Spotify's grant itself, also remove the app in Spotify's account app-access settings.
 
 Never commit `.dev.vars`, `.env.production`, database exports, or populated Shortcut files. The [security guide](docs/security.md) explains retention, recovery, and trust boundaries.
@@ -169,6 +173,7 @@ Never commit `.dev.vars`, `.env.production`, database exports, or populated Shor
 | No active device, even though Spotify is open | **Refresh devices**, choose the intended device under **Where to play**, then Resume. If absent, open Spotify there and refresh. |
 | Idle iPhone is missing from the device list | On the iPhone, choose the persistent **This iPhone** entry and tap **Resume**. Keep Spotify visible after it opens. If the app cannot identify the phone on first use, follow its refresh/device-selection message. |
 | Nothing saves | Open a supported track or podcast episode using the connected account. Playing or paused is fine; Spotify must still report its position. |
+| Updating a paused iPhone | Tap **Update position** on the bookmark and keep Spotify visible while it saves automatically. If Spotify supplies no valid position, the bookmark stays unchanged. |
 | Podcast playback is not confirmed | Open the saved episode in Spotify or choose another available device, then retry Resume. The app keeps the bookmark and does not skip through your queue. A timeout means playback could not be confirmed; check Spotify before retrying. |
 | Sign-in fails | Check the setup key, original owner account, app access, and exact callback. Both playback permissions are required. |
 | Reconnect requested | Authorize the same account again. Your bookmarks remain. |
@@ -194,6 +199,7 @@ TypeScript Worker, plain HTML/CSS/JavaScript, and D1 SQL. No frontend framework 
 | `src/index.ts` | Routes, owner/session checks, bookmarks, and device selection |
 | `src/spotify.ts` | Spotify requests, token refresh, automatic context selection, and resume payload |
 | `src/phone-resume.ts` | Bounded phone discovery, exact-device resume, and playback confirmation |
+| `src/paused-recovery.ts` | Browser-only paused capture, temporary encrypted preview, and explicit confirmation |
 | `src/crypto.ts` | Encryption, credential generation, and hashing |
 | `public/` | Web interface |
 | `migrations/` | D1 database schema |
@@ -213,5 +219,7 @@ As of 26 October 2026:
 | Device routing and safeguards | Local browser checks with actual app routes and a synthetic Spotify provider covered first/remembered phone targeting, speakers, missing devices, keyboard activation, and duplicate-click suppression. These do not establish native iPhone app opening by themselves. |
 
 The iPhone result is an owner-reported device check, not an independently observed test across all clients. Other iOS/Spotify versions, iPhone podcast resume, and a complete device matrix remain unverified. Browser checks and compilation do not replace real playback checks on your intended device.
+
+Paused-update recovery was added on 27 October 2026. The owner confirmed the hosted flow worked on a physical iPhone without pressing Play. Local checks exercise the actual routes and SQLite with a synthetic Spotify provider, including capture/review/confirm, cancellation, expiry, changed slots and session isolation. A 390-pixel browser preview checks reload/confirmation behavior. The unified **Update position** action removes the recovery choice and manual confirmation. Playing/paused automatic saves are checked locally with the actual routes and SQLite; this revised automatic flow still needs a physical-device check.
 
 Pull requests and pushes to `main` run **Typecheck and build** in GitHub Actions. This checks compilation and Worker packaging; it does not run the application test suite, use Spotify credentials, or deploy to Cloudflare.

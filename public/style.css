@@ -4,3 +4,4 @@
 .bookmark-name{grid-column:1/-1;max-width:none;margin:0}.bookmark-name label{margin-top:0}
 .bookmark-update{grid-column:1/-1;border-top:1px solid var(--line);padding-top:12px}.bookmark-update p{margin:0 0 12px}
 .resume-control{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:9px 16px;border:1px solid transparent;border-radius:999px;background:var(--green);color:var(--ink);font:inherit;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer}.resume-control:hover{filter:brightness(1.15)}.resume-control[aria-disabled="true"]{opacity:.5;cursor:wait}
+.recovery-control{display:inline-flex;align-items:center;min-height:44px;padding:9px 16px;border:1px solid var(--ink);border-radius:999px;background:var(--ink);color:white;font:inherit;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer}.recovery-control[aria-disabled="true"]{opacity:.5;cursor:wait}

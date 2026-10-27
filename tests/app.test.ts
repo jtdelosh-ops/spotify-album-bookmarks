@@ -23,6 +23,7 @@ function database() {
   db.exec(readFileSync(new URL('../migrations/0002_listening_bookmarks.sql',import.meta.url),'utf8'));
   db.exec(readFileSync(new URL('../migrations/0003_independent_saves.sql',import.meta.url),'utf8'));
   db.exec(readFileSync(new URL('../migrations/0004_shortcut_update_access.sql',import.meta.url),'utf8'));
+  db.exec(readFileSync(new URL('../migrations/0005_paused_update_captures.sql',import.meta.url),'utf8'));
   class Statement {
     sql: string; values: any[] = [];
     constructor(sql: string) { this.sql = sql; }

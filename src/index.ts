@@ -2,10 +2,11 @@ import { AppError, type Env, type Fetch, type Session, type Bookmark } from './t
 import { hash, randomToken, encrypt, decrypt, equalSecret } from './crypto.ts';
 import { SCOPES, tokenExchange, storeAuthorization, spotify, spotifyFailure, bookmarkFromPlayback, playlistMetadata, resumeBookmark } from './spotify.ts';
 import {resumeOnPhone} from './phone-resume.ts';
+import {captureIdValid,startPausedCapture,readPausedCapture,cancelPausedCapture,confirmPausedCapture} from './paused-recovery.ts';
 
 const minute = 60000;
 const day = 86400000;
-const bookmarkPattern = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume|\/resume-on-phone|\/update)?$/;
+const bookmarkPattern = /^\/api\/bookmarks\/((?:album_|playlist_|episode_)?[A-Za-z0-9]{22}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/resume|\/resume-on-phone|\/update|\/recover-paused|\/update-on-phone)?$/;
 function slotId(id: string): string { return /^[A-Za-z0-9]{22}$/.test(id) ? `album_${id}` : id; }
 function local(env: Env): boolean { return new URL(env.APP_ORIGIN).protocol === 'http:'; }
 function cookieName(env: Env, kind: string): string { return `${local(env) ? '' : '__Host-'}album_${kind}`; }
@@ -184,6 +185,16 @@ async function routes(request: Request, env: Env, fetcher: Fetch, context?: Pick
   }
   const session = await webSession(request,env);
   await rate(env,`web:${session.account_id}`,60);
+  const captureRoute = /^\/api\/update-captures\/([^/]+)(\/confirm|\/cancel)?$/.exec(path);
+  if (captureRoute && captureIdValid(captureRoute[1])) {
+    const id=captureRoute[1],operation=captureRoute[2];
+    if (!operation && request.method==='GET') return json({ok:true,...await readPausedCapture(env,session,id)});
+    if (operation==='/confirm' && request.method==='POST') return json(await confirmPausedCapture(env,session,id));
+    if (operation==='/cancel' && request.method==='POST') {
+      await cancelPausedCapture(env,session,id);return json({ok:true,message:'Capture cancelled. Your bookmark was not changed.'});
+    }
+    throw new AppError(405,'method','Method not allowed.');
+  }
   if (path === '/api/session' && request.method === 'GET') {
     const credentials = await env.DB.prepare('SELECT authorized_at FROM spotify_credentials WHERE account_id=?').bind(session.account_id).first<{authorized_at:number}>();
     return json({ok:true,csrf:session.csrf_token,spotifyConnected:!!credentials});
@@ -206,6 +217,20 @@ async function routes(request: Request, env: Env, fetcher: Fetch, context?: Pick
     if (bookmarkRoute[2] === '/update') return updateBookmark(env,fetcher,session.account_id,bookmarkId,now);
     const bookmark = await env.DB.prepare('SELECT * FROM saved_bookmarks WHERE account_id=? AND bookmark_id=?').bind(session.account_id,bookmarkId).first<Bookmark>();
     if (!bookmark) throw new AppError(404,'bookmark_missing','This bookmark was already deleted. Reload the list.');
+    if (['/recover-paused','/update-on-phone'].includes(bookmarkRoute[2])) {
+      if (!context) throw new AppError(503,'capture_unavailable','Paused recovery is unavailable. Your bookmark was not changed.');
+      if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new AppError(415,'content_type','Send recovery details as JSON.');
+      let body:any;
+      try {body=JSON.parse(await limitedText(request));}
+      catch(error){if(error instanceof AppError)throw error;throw new AppError(400,'capture_request','Open Update position and try recovery again.');}
+      if(!body||!captureIdValid(body.captureId)||!Array.isArray(body.seenDeviceIds)||body.seenDeviceIds.length>100||
+        !body.seenDeviceIds.every((id:any)=>typeof id==='string'&&id.length>0&&id.length<=256)||
+        (body.deviceId!==undefined&&(typeof body.deviceId!=='string'||!body.deviceId||body.deviceId.length>256)))
+        throw new AppError(400,'capture_request','Open Update position and try recovery again.');
+      await rate(env,bookmarkRoute[2]==='/update-on-phone'?`save:${session.account_id}`:`paused-capture:${session.account_id}`,bookmarkRoute[2]==='/update-on-phone'?30:5);
+      await startPausedCapture(env,fetcher,session,bookmark,body,context,bookmarkRoute[2]==='/update-on-phone');
+      return json({ok:true,captureId:body.captureId,status:'waiting'},202);
+    }
     if (request.method === 'PATCH') {
       if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new AppError(415,'content_type','Send a bookmark name as JSON.');
       let body: any;
@@ -297,11 +322,15 @@ async function routes(request: Request, env: Env, fetcher: Fetch, context?: Pick
     }
   }
   if (path === '/api/logout' && request.method === 'POST') {
-    await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(session.token_hash).run();
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM update_captures WHERE session_hash=?').bind(session.token_hash),
+      env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(session.token_hash)
+    ]);
     return new Response(JSON.stringify({ok:true,message:'Signed out.'}),{headers:{'Content-Type':'application/json','Set-Cookie':setCookie(env,'session','',0)}});
   }
   if (path === '/api/disconnect' && request.method === 'POST') {
     await env.DB.batch([
+      env.DB.prepare('DELETE FROM update_captures WHERE account_id=?').bind(session.account_id),
       env.DB.prepare('DELETE FROM spotify_credentials WHERE account_id=?').bind(session.account_id),
       env.DB.prepare('DELETE FROM sessions WHERE account_id=?').bind(session.account_id),
       env.DB.prepare('UPDATE shortcut_credentials SET revoked_at=? WHERE account_id=?').bind(now,session.account_id)
@@ -347,6 +376,7 @@ export function createApp(fetcher: Fetch = fetch) {
         env.DB.prepare('DELETE FROM oauth_states WHERE expires_at<=?').bind(now),
         env.DB.prepare('DELETE FROM sessions WHERE expires_at<=?').bind(now),
         env.DB.prepare('DELETE FROM rate_limits WHERE expires_at<=?').bind(now),
+        env.DB.prepare('DELETE FROM update_captures WHERE expires_at<=?').bind(now),
         env.DB.prepare('DELETE FROM shortcut_credentials WHERE revoked_at IS NOT NULL AND revoked_at<?').bind(now-30*day)
       ]);
     }

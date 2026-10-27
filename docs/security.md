@@ -8,6 +8,8 @@ Protected assets include Spotify tokens, bookmark listening history, browser ses
 
 ## Controls
 
+Automatic iPhone Update is browser-only. The user requests replacement with one tap; the Worker captures valid playing or paused state and commits the encrypted, five-minute, session-bound snapshot transactionally. If reconnection is needed, play:false may change Spotify’s queue; the page discloses this without another confirmation step. No Play command or extra scope is introduced. Invalid state, a changed/deleted slot, or a failed reconnect preserves the old save. Old manual previews are never auto-confirmed; Bearer grants cannot use phone update/recovery routes.
+
 | Threat | Control and relevant implementation |
 | --- | --- |
 | An outsider claims or links their account | A high-entropy `SETUP_KEY` is required before starting OAuth. The first account is atomically bound to the singleton owner. Later logins must match its immutable `account_id`; ownership is never selected from a request parameter. Keep the key private after setup because it also gates reauthentication. |
