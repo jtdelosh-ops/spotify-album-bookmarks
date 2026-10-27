@@ -8,6 +8,8 @@ Protected assets include Spotify tokens, bookmark listening history, browser ses
 
 ## Controls
 
+Paused update recovery is browser-only. Its five-minute preview is encrypted with authenticated data bound to the owner, session hash and capture ID. Confirmation consumes the displayed snapshot transactionally and rejects a changed/deleted bookmark. Cancellation, confirmation, logout and disconnect clear associated snapshots; expiration is enforced on reads/confirmation and rows are purged on the next capture or daily cleanup. A recovery may send one explicit `play:false` device transfer and can change Spotify’s queue, so it never overwrites a save until the user reviews and confirms the captured audio/time. No Play command or extra Spotify scope is introduced. Legacy Bearer grants cannot start, read, cancel or confirm recovery.
+
 | Threat | Control and relevant implementation |
 | --- | --- |
 | An outsider claims or links their account | A high-entropy `SETUP_KEY` is required before starting OAuth. The first account is atomically bound to the singleton owner. Later logins must match its immutable `account_id`; ownership is never selected from a request parameter. Keep the key private after setup because it also gates reauthentication. |

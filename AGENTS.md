@@ -23,3 +23,9 @@ Evidence: `0002_listening_bookmarks.sql` copies once, while the old Worker conti
 For episode resume in `src/spotify.ts`, use the parent show context with an exact episode URI offset and saved position, then confirm the reported episode/device/playing state/position. Resolve the show from episode metadata for older saved episode URIs. Do not fall back to a bare `uris: [episode]` command or report success solely because Spotify returned 204.
 
 Evidence: live Windows checks on 25 October 2026 showed the bare episode URI returning 204 but clearing playback. Show context plus episode offset resumed two different shows at the requested times, including an older bookmark resolved through metadata. Album/playlist context playback remains valid; unrelated naming or UI changes do not require repeating this live check. Spotify's published play reference does not explicitly guarantee show-context support on every client.
+
+# Paused iPhone capture
+
+When recovering unavailable paused playback, never silently transfer devices and overwrite a bookmark. Require explicit reconnect, show the recovered audio/time, and save that exact temporary snapshot only after confirmation. A `play:false` transfer does not prove preservation of an otherwise unobservable local queue. Keep recovery out of shared normal capture and legacy Bearer grants.
+
+Evidence: on 27 October 2026, both playback reads returned 204 while the iPhone was paused. An explicitly approved transfer exposed the paused item/time once and the owner confirmed preservation, but a later Update still failed after returning to the page. Recapturing on confirmation loses the recovered state; automatic transfer plus overwrite cannot establish the intended audio. Valid reported paused state can still use ordinary Update without recovery. Naming-only changes do not require device reconnection or a new recovery check.

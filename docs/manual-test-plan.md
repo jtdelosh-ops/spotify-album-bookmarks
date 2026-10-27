@@ -27,3 +27,9 @@
 | Mobile layout/accessibility | Inspect small and large iPhone widths, long album/track names, text scaling, focus/tap targets, empty list, multiple cards, visible feedback, and VoiceOver names for Resume/Delete. |
 
 Release can proceed only with an honest account of failed and unavailable checks. Passing mocked tests is not a substitute for observing successful Spotify playback and the iPhone app-opening flow on the intended device.
+
+## Paused iPhone update recovery
+
+With Spotify paused on the iPhone, reproduce Update now returning no position. In that bookmark’s Update panel, use Open Spotify & recover position; verify the native app opens without Play, open the devices panel with This iPhone selected, and keep it visible. Return to review the title/time against Spotify. Before confirmation the original slot and all siblings must be unchanged. Confirm must store the displayed capture even if the provider returns no state after leaving Spotify. Record whether the queue/audio/time changed during reconnect; command acceptance alone proves no preservation.
+
+Cancel while waiting and after preview; neither may overwrite a bookmark. An already-sent reconnect cannot be undone. Reload the page or open it in another tab of the same signed-in browser: the pending preview should return, with its original five-minute expiry. Confirm twice, expire a preview, and rename/update/delete the slot concurrently: no duplicate save, stale overwrite, recreated slot or altered sibling is allowed. Check missing/restricted/ambiguous phones, a different active device, playing state and wrong-device state: fail without saving. Browser session/Origin/CSRF are required, and a legacy update-enabled Bearer credential alongside a valid cookie must still be denied all recovery routes. Normal browser and legacy paused Update must remain unchanged when Spotify supplies a valid position.

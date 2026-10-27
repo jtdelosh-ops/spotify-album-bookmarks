@@ -11,6 +11,15 @@ Leave Spotify at the position you want, playing or paused. On the bookmark page:
 
 Spotify must still report its item and position. A closed/offline player or an expired playback state may provide nothing to save; the app preserves earlier bookmarks instead of inventing a position.
 
+If **Update now** says Spotify is not reporting your paused position:
+
+1. Choose **This iPhone** under **Where to play**. In the selected bookmark’s Update panel, tap **Open Spotify & recover position**.
+2. In Spotify, open the devices/Connect panel below the player and select **This iPhone**. Leave it paused and visible while the app captures the position; do not press Play.
+3. Return to the bookmark page. Check the recovered audio title and time against Spotify.
+4. Tap **Update now** to replace that bookmark with the displayed capture, or **Cancel update** to keep the earlier save.
+
+Recovery can reconnect your phone and change Spotify’s queue. It does not send a Play command. The review step matters because Spotify might expose a different item after reconnecting. Confirmation saves the capture you reviewed, rather than reading Spotify again after you return. The preview lasts five minutes and survives a page reload in the same signed-in browser; it does not transfer to a different browser or a new sign-in session. If the phone cannot be identified, another device is active, or no valid paused position appears, recovery leaves your bookmark unchanged. This flow updates existing bookmarks; it does not recover a failed **Add bookmark**.
+
 ## Resume without playing something first
 
 1. Under **Where to play**, choose **This iPhone**, then tap **Resume** on the saved bookmark.
